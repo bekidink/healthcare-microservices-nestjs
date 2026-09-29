@@ -1,0 +1,114 @@
+name: healthcare-ecosystem
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: healthcare
+      POSTGRES_PASSWORD: healthcare
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U healthcare"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    # Official Apache image (KRaft mode, no ZooKeeper needed) — the
+    # bitnami/kafka images this originally used are no longer published to
+    # Docker Hub under pullable tags (Broadcom moved Bitnami's distribution
+    # after acquiring it), so this uses Apache's own image instead.
+    image: apache/kafka:3.8.0
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # Two listeners: PLAINTEXT for container-to-container traffic
+      # (services running inside docker-compose reach it as kafka:9092) and
+      # PLAINTEXT_HOST for a service running directly on the host machine
+      # during local dev (reaches it as localhost:9094). Without the second
+      # one, a host-side client's initial bootstrap connection on :9092
+      # succeeds, but every subsequent produce/fetch fails once it follows
+      # the broker's metadata to the kafka:9092 advertised address, which
+      # isn't resolvable outside the compose network.
+      KAFKA_LISTENERS: PLAINTEXT://:9092,PLAINTEXT_HOST://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # minio: intentionally not included yet. MinIO's images now require
+  # registry authentication to pull (both Docker Hub and quay.io returned
+  # 401 as of this writing), and no service through Milestone 1 actually
+  # needs object storage. Add it back — with working credentials/an
+  # alternative S3-compatible image — when a phase that needs it (documents,
+  # imaging) actually lands.
+
+  gateway:
+    build:
+      context: .
+      dockerfile: apps/gateway/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      IDENTITY_SERVICE_URL: http://identity:3001
+      JWT_ACCESS_SECRET: dev-access-secret-change-me
+    depends_on:
+      - identity
+
+  identity:
+    build:
+      context: .
+      dockerfile: apps/identity/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/identity_db?schema=public
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      JWT_ACCESS_SECRET: dev-access-secret-change-me
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 30d
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  kafkadata:

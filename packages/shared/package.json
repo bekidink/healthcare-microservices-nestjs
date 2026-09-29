@@ -1,0 +1,23 @@
+{
+  "name": "@healthcare/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "echo \"no lint configured\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests\"",
+    "prisma:generate": "echo \"no prisma schema in shared\""
+  },
+  "dependencies": {
+    "pino": "^9.6.0",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/swagger": "^8.1.0",
+    "kafkajs": "^2.2.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

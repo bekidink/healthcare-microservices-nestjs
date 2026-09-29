@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String?   @unique
+  phone        String?   @unique
+  passwordHash String?
+  status       String    @default("active") // active | disabled | pending_verification
+  // Bumped on password change / forced logout-everywhere so previously
+  // issued access tokens naturally fail their tokenVersion check.
+  tokenVersion Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships Membership[]
+  sessions    UserSession[]
+  provider    ProviderProfile?
+  otpCodes    OtpCode[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String @id @default(uuid())
+  name        String @unique
+  description String?
+
+  permissions RolePermission[]
+  memberships Membership[]
+
+  createdAt DateTime @default(now())
+
+  @@map("roles")
+}
+
+model Permission {
+  id   String @id @default(uuid())
+  code String @unique // resource.action, e.g. "patient.read", "invoice.void"
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// organizationId/facilityId are owned by the Facility service — stored here
+// as plain values, never as a real FK, per the "never directly query
+// another service's database" rule.
+model Membership {
+  id             String   @id @default(uuid())
+  userId         String
+  organizationId String
+  facilityId     String?
+  roleId         String
+  status         String   @default("active") // active | suspended
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+model UserSession {
+  id               String    @id @default(uuid())
+  userId           String
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  revokedAt        DateTime?
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model ProviderProfile {
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  licenseNumber       String?
+  specialty           String?
+  credentialStatus    String    @default("pending") // pending | verified | expired | revoked
+  credentialExpiresAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("provider_profiles")
+}
+
+model OtpCode {
+  id         String    @id @default(uuid())
+  userId     String
+  codeHash   String
+  purpose    String // login | verify_phone | verify_email | mfa
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("otp_codes")
+}
+
+// Written synchronously in the same transaction as any sensitive action.
+// Append-only: never updated or deleted by application code.
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+// Transactional outbox: written in the same transaction as the domain
+// change it announces; a separate publisher polls PENDING rows and
+// delivers them to Kafka, then marks them PUBLISHED.
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING") // PENDING | PUBLISHED | FAILED
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}
