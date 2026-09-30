@@ -7,7 +7,11 @@
 # which has no free private-service instance type — see the "Deploying to
 # Render (free tier)" section in the root README for the full tradeoffs.
 FROM node:20-alpine AS base
-RUN corepack enable
+# Prisma's engine binaries need real OpenSSL present to detect the right
+# target (linux-musl-openssl-3.0.x on this Alpine) — without it, Prisma
+# silently guesses "openssl-1.1.x" and the engine fails to load at runtime
+# with a non-JSON "Error loading..." response.
+RUN apk add --no-cache openssl && corepack enable
 WORKDIR /workspace
 
 FROM base AS deps
@@ -39,7 +43,7 @@ RUN pnpm --filter @healthcare/patient build
 RUN pnpm --filter @healthcare/scheduling build
 
 FROM node:20-alpine AS runtime
-RUN corepack enable && npm install -g pm2
+RUN apk add --no-cache openssl && corepack enable && npm install -g pm2
 WORKDIR /workspace
 ENV NODE_ENV=production
 COPY --from=build /workspace ./

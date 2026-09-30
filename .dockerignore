@@ -13,6 +13,11 @@ generated
 **/generated
 .turbo
 **/.turbo
+# TS incremental build cache — tied to host paths/mtimes, so a copy of the
+# Windows one makes tsc think a fresh build has nothing to emit (this is
+# what caused packages/shared/dist to end up with .d.ts files but no .js).
+*.tsbuildinfo
+**/*.tsbuildinfo
 .git
 .env
 **/.env

@@ -64,7 +64,11 @@ async function main() {
   for (const [service, dbName] of Object.entries(SERVICES)) {
     const url = withDb(base, dbName);
     console.log(`[migrate-all] ${service} -> ${dbName}`);
-    execSync('pnpm exec prisma migrate deploy', {
+    // Direct binary invocation, not `pnpm exec` — the runtime image never
+    // primes corepack's pnpm download during the build, so `pnpm exec` at
+    // container startup would try (and, in a network-restricted runtime,
+    // fail) to fetch pnpm itself before it could even run prisma.
+    execSync('node_modules/.bin/prisma migrate deploy', {
       cwd: path.join(__dirname, '..', '..', 'apps', service),
       stdio: 'inherit',
       env: { ...process.env, DATABASE_URL: url },

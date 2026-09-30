@@ -142,7 +142,7 @@ docker compose up --build
 To deploy: push this repo to GitHub, then in the Render dashboard use **New → Blueprint** and point it at the repo.
 
 Known limitations, worth being upfront about:
-- **RAM is shared and capped** across all 5 processes (Render's free web service gets 512MB total) — fine for a demo/smoke test, not for real load.
+- **RAM is shared and capped** across all 5 processes (Render's free web service gets 512MB total). A local smoke test measured all 5 idling at ~525MB combined right after boot — already over budget before any real traffic. If Render OOM-kills the container under load, this is the one limitation of the single-container approach that isn't just cosmetic; the paid, one-private-service-per-process topology (see below) is the real fix.
 - **Cold starts are slower**: free web services spin down after inactivity, and the next request has to boot all 5 processes together.
 - One thing most likely to have drifted from Render's current schema by the time you read this: the free Postgres `plan: free` value/availability itself — Render's free database tier terms change more often than instance types do. Fix from the blueprint-import error message if it complains.
 
