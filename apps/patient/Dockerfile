@@ -4,7 +4,7 @@ RUN corepack enable
 WORKDIR /workspace
 
 FROM base AS deps
-COPY pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY apps/patient/package.json apps/patient/package.json
 RUN pnpm install --frozen-lockfile=false --filter @healthcare/patient...

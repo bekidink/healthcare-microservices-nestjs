@@ -1,0 +1,19 @@
+# Without this, `COPY apps/x apps/x` etc. copies whatever's locally
+# installed on the HOST (Windows node_modules, Windows-native Prisma engine
+# binaries under generated/, stale dist/ output) straight into the Linux
+# build, silently overwriting what the deps/build stages just installed
+# correctly inside the container. That's exactly what caused "Cannot find
+# module .../typescript/bin/tsc" and would have caused a matching Prisma
+# query-engine mismatch right after.
+node_modules
+**/node_modules
+dist
+**/dist
+generated
+**/generated
+.turbo
+**/.turbo
+.git
+.env
+**/.env
+*.log
