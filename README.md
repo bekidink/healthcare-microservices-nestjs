@@ -20,7 +20,7 @@ ever queries another service's database directly.** Cross-service reads go
 through that service's API or a Kafka-fed read model — never a raw SQL join
 across service boundaries.
 
-## Current status: Milestone 2 — Facility + Patient/MPI
+## Current status: Milestone 3 — Scheduling + Queue
 
 | Service | Status | Owns |
 |---|---|---|
@@ -28,7 +28,32 @@ across service boundaries.
 | `apps/identity` | ✅ | User, Role, Permission, Membership, UserSession, ProviderProfile, OtpCode + register/login/refresh/logout/OTP APIs |
 | `apps/facility` | ✅ | Organization, Facility, FacilityConfiguration (capability flags), Department, Room, FacilityService, ProviderDepartment, ProviderSchedule |
 | `apps/patient` | ✅ | Patient, PatientIdentifier, PatientContact, Consent, AccessGrant, MergeCase (human-reviewed duplicate detection/merge — see below) |
-| scheduling, clinical, orders, pharmacy, lab, imaging, inpatient, emergency, finance, supply, communication, analytics, interoperability, ai | ⏳ not started | See the roadmap below |
+| `apps/scheduling` | ✅ | AppointmentType, ScheduleSlot, Appointment (state machine), QueueEntry, Reminder (see below) |
+| clinical, orders, pharmacy, lab, imaging, inpatient, emergency, finance, supply, communication, analytics, interoperability, ai | ⏳ not started | See the roadmap below |
+
+### Scheduling: Facility's recurring template vs. Scheduling's concrete slots
+
+Facility owns `ProviderSchedule` — a recurring weekly availability template
+(e.g. "Dr. X, Mondays, 08:00–16:00, Internal Medicine"). Scheduling owns
+`ScheduleSlot` — concrete, bookable half-hour (configurable) windows on
+actual calendar dates. `POST /schedule-slots/generate` is the bridge: it
+makes a plain synchronous REST call to the Facility service
+(`FacilityClientService`, per the core rule "REST for synchronous
+operations" — never a query against `facility_db`), reads that provider's
+recurring schedule, and expands it into concrete slots for a date range.
+Already-generated slots are skipped on re-run (safe to call repeatedly).
+
+Appointments follow the PRD's state machine exactly:
+`REQUESTED → CONFIRMED → CHECKED_IN → IN_SERVICE → COMPLETED`, with
+`CANCELLED` reachable from any pre-completion state and `NO_SHOW` from
+`CONFIRMED`/`CHECKED_IN`. Booking marks the slot `booked`; cancelling
+reopens it for someone else, a no-show does **not** (the reserved time
+already passed). Checking in also opens a `QueueEntry` with the next
+sequential number for that facility/department/day — the `/queue` endpoints
+give reception a simple ordered, active-only view (waiting/called/
+in_service), filtering out completed/skipped entries automatically.
+`Reminder` only records *intent* to remind (channel + scheduledFor) — it
+does not send anything; see Known gaps.
 
 ### Patient/MPI: how "never silently merge" is actually enforced
 
@@ -60,9 +85,9 @@ roadmap.
 ## Roadmap (from the Implementation Breakdown doc)
 
 1. Infrastructure + Gateway + Identity ✅
-2. Facility + Patient/MPI ✅ ← you are here
-3. **Scheduling + Queue** ← next
-4. Clinical + Encounter
+2. Facility + Patient/MPI ✅
+3. **Scheduling + Queue** ✅ ← you are here
+4. Clinical + Encounter ← next
 5. Orders + Laboratory
 6. Pharmacy
 7. Finance + Payment
@@ -87,7 +112,8 @@ pnpm --filter @healthcare/identity prisma:migrate          # creates tables in i
 pnpm --filter @healthcare/identity prisma:seed             # seeds starter roles/permissions
 pnpm --filter @healthcare/facility prisma:migrate           # creates tables in facility_db
 pnpm --filter @healthcare/patient prisma:migrate            # creates tables in patient_db
-pnpm dev                                                    # runs gateway + identity + facility + patient via turbo
+pnpm --filter @healthcare/scheduling prisma:migrate         # creates tables in scheduling_db
+pnpm dev                                                    # runs gateway + identity + facility + patient + scheduling via turbo
 ```
 
 Or run everything, including the app services, inside Docker:
@@ -102,6 +128,7 @@ docker compose up --build
 | Identity | `http://localhost:3001` (`/docs` for Swagger) | `/api/v1/auth/*`, `/api/v1/users/*` |
 | Facility | `http://localhost:3002` (`/docs`) | `/api/v1/organizations/*`, `/api/v1/facilities/*`, `/api/v1/departments/*` |
 | Patient | `http://localhost:3003` (`/docs`) | `/api/v1/patients/*`, `/api/v1/merge-cases/*` |
+| Scheduling | `http://localhost:3004` (`/docs`) | `/api/v1/appointment-types/*`, `/api/v1/schedule-slots/*`, `/api/v1/appointments/*`, `/api/v1/queue/*`, `/api/v1/reminders/*` |
 
 ## Known gaps
 
@@ -122,6 +149,10 @@ docker compose up --build
   each new service is added.
 - **MPI matching**: see the Patient/MPI section above — the matching
   heuristic is a placeholder, not production-grade duplicate detection.
+- **Reminder delivery**: `apps/scheduling`'s `Reminder` model records intent
+  only (channel + scheduledFor + `listDue()`/`markSent()`) — there is no
+  Notification service yet to actually send an SMS/email/push, so nothing
+  is delivered until roadmap step 8 (Notification) lands.
 
 ## Core microservice rules (from the Implementation Breakdown doc)
 

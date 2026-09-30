@@ -84,11 +84,13 @@ services:
       IDENTITY_SERVICE_URL: http://identity:3001
       FACILITY_SERVICE_URL: http://facility:3002
       PATIENT_SERVICE_URL: http://patient:3003
+      SCHEDULING_SERVICE_URL: http://scheduling:3004
       JWT_ACCESS_SECRET: dev-access-secret-change-me
     depends_on:
       - identity
       - facility
       - patient
+      - scheduling
 
   identity:
     build:
@@ -149,6 +151,27 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+
+  scheduling:
+    build:
+      context: .
+      dockerfile: apps/scheduling/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      PORT: 3004
+      DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/scheduling_db?schema=public
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: scheduling-service
+      FACILITY_SERVICE_URL: http://facility:3002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      facility:
+        condition: service_started
 
 volumes:
   pgdata:

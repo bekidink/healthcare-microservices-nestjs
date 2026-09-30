@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Catalog of bookable appointment types at a facility (Facility-service
+// facility id, referenced by value only — never joined across databases).
+model AppointmentType {
+  id                  String  @id @default(uuid())
+  facilityId          String
+  name                String
+  code                String
+  defaultDurationMins Int     @default(30)
+  isActive            Boolean @default(true)
+
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([facilityId, code])
+  @@index([facilityId])
+  @@map("appointment_types")
+}
+
+// A concrete, bookable time slot for one provider on one date — distinct
+// from Facility's ProviderSchedule (a recurring weekly availability
+// template). Slots are either created directly or expanded from a
+// provider's recurring schedule via a synchronous call to the Facility
+// service (see FacilityClientService) — REST for that sync read, per the
+// core microservice rules, never a cross-database join.
+model ScheduleSlot {
+  id           String   @id @default(uuid())
+  providerId   String
+  facilityId   String
+  departmentId String?
+  date         DateTime @db.Date
+  startTime    String // "HH:mm", facility-local time
+  endTime      String
+  status       String   @default("open") // open | booked | blocked
+
+  appointment Appointment?
+
+  createdAt DateTime @default(now())
+
+  @@unique([providerId, date, startTime])
+  @@index([facilityId, departmentId, date, status])
+  @@map("schedule_slots")
+}
+
+// PRD Sec 27 state machine: REQUESTED -> CONFIRMED -> CHECKED_IN ->
+// IN_SERVICE -> COMPLETED, with CANCELLED reachable from any
+// pre-completion state and NO_SHOW reachable from CONFIRMED/CHECKED_IN.
+// patientId/providerId are Patient-/Identity-service ids, referenced by
+// value only.
+model Appointment {
+  id                String    @id @default(uuid())
+  patientId         String
+  providerId        String
+  facilityId        String
+  departmentId      String?
+  appointmentTypeId String?
+  slotId            String    @unique
+  status            String    @default("requested")
+  reason            String?
+  cancellationReason String?
+
+  requestedAt  DateTime  @default(now())
+  confirmedAt  DateTime?
+  checkedInAt  DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+
+  slot            ScheduleSlot     @relation(fields: [slotId], references: [id])
+  appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [id])
+  queueEntry      QueueEntry?
+  reminders       Reminder[]
+
+  @@index([patientId])
+  @@index([providerId])
+  @@index([facilityId, status])
+  @@map("appointments")
+}
+
+// Created when an Appointment transitions to CHECKED_IN; queueNumber is
+// sequential per facility+department+day, giving reception/providers a
+// simple day-of queue view without needing real-time infra.
+model QueueEntry {
+  id            String    @id @default(uuid())
+  appointmentId String    @unique
+  facilityId    String
+  departmentId  String?
+  queueNumber   Int
+  status        String    @default("waiting") // waiting | called | in_service | done | skipped
+  checkedInAt   DateTime  @default(now())
+  calledAt      DateTime?
+  completedAt   DateTime?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, departmentId, status, queueNumber])
+  @@map("queue_entries")
+}
+
+// Scheduling only — this records intent to remind, it does not send
+// anything. Actual delivery is Notification/Communication's job (not built
+// yet); a future service would poll GET /reminders/due and mark them sent.
+model Reminder {
+  id            String    @id @default(uuid())
+  appointmentId String
+  channel       String // sms | push | email
+  scheduledFor  DateTime
+  status        String    @default("pending") // pending | sent | failed
+  sentAt        DateTime?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@index([status, scheduledFor])
+  @@map("reminders")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

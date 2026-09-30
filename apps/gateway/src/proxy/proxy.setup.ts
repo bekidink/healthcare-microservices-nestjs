@@ -17,6 +17,7 @@ import { REQUEST_ID_HEADER } from '@healthcare/shared';
 const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL || 'http://localhost:3001';
 const FACILITY_URL = process.env.FACILITY_SERVICE_URL || 'http://localhost:3002';
 const PATIENT_URL = process.env.PATIENT_SERVICE_URL || 'http://localhost:3003';
+const SCHEDULING_URL = process.env.SCHEDULING_SERVICE_URL || 'http://localhost:3004';
 
 const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/auth', target: IDENTITY_URL, downstreamPrefix: '/auth' },
@@ -26,6 +27,11 @@ const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/departments', target: FACILITY_URL, downstreamPrefix: '/departments' },
   { prefix: '/api/v1/patients', target: PATIENT_URL, downstreamPrefix: '/patients' },
   { prefix: '/api/v1/merge-cases', target: PATIENT_URL, downstreamPrefix: '/merge-cases' },
+  { prefix: '/api/v1/appointment-types', target: SCHEDULING_URL, downstreamPrefix: '/appointment-types' },
+  { prefix: '/api/v1/schedule-slots', target: SCHEDULING_URL, downstreamPrefix: '/schedule-slots' },
+  { prefix: '/api/v1/appointments', target: SCHEDULING_URL, downstreamPrefix: '/appointments' },
+  { prefix: '/api/v1/queue', target: SCHEDULING_URL, downstreamPrefix: '/queue' },
+  { prefix: '/api/v1/reminders', target: SCHEDULING_URL, downstreamPrefix: '/reminders' },
 ];
 
 export function registerProxyRoutes(app: Express) {
