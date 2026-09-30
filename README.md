@@ -130,6 +130,20 @@ docker compose up --build
 | Patient | `http://localhost:3003` (`/docs`) | `/api/v1/patients/*`, `/api/v1/merge-cases/*` |
 | Scheduling | `http://localhost:3004` (`/docs`) | `/api/v1/appointment-types/*`, `/api/v1/schedule-slots/*`, `/api/v1/appointments/*`, `/api/v1/queue/*`, `/api/v1/reminders/*` |
 
+## Deploying to Render
+
+`render.yaml` at the repo root is a [Blueprint](https://render.com/docs/blueprint-spec) that provisions the whole platform: 4 managed Postgres instances (one per service that owns data — identity/facility/patient/scheduling each get their own, rather than the single-instance-multiple-logical-databases trick `docker-compose.yml` uses locally), a managed Redis (Key Value) instance, a self-hosted single-node Kafka broker (private service + persistent disk — Render has no managed Kafka), the four internal app services as private services, and the gateway as the one public web service.
+
+To deploy: push this repo to GitHub, then in the Render dashboard use **New → Blueprint** and point it at the repo. Render reads `render.yaml` and provisions everything in one pass, including running each service's `prisma migrate deploy` automatically before every deploy (via `preDeployCommand`) and generating/sharing the JWT secret between identity and the gateway automatically.
+
+Two things to do once, after the first deploy:
+- Update the gateway's `CORS_ORIGINS` env var from the placeholder `*` to your real frontend origin(s).
+- If you don't already have an identity role/permission seed in `identity_db`, run `pnpm exec ts-node prisma/seed.ts` once via a Render shell/job against the deployed `identity` service (the local `prisma:seed` script does this).
+
+Known deploy-specific caveats, flagged in comments at the top of `render.yaml`:
+- The blueprint's `redis` service type and the exact private-service internal address format (`http://<name>:<port>`) are the two fields most likely to have drifted from Render's current schema — if the blueprint import errors on either, fix from the error message and Render's current Blueprint docs.
+- Self-hosted Kafka on a private service has no automatic failover — it's one broker, one disk. Fine for this stage of the project; revisit if/when uptime requirements tighten.
+
 ## Known gaps
 
 - **Object storage (MinIO/S3)**: not provisioned. Both `minio/minio` on
