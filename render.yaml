@@ -14,9 +14,11 @@
 #   one Render private service each.
 # - One free Postgres instance hosts all 4 logical databases (identity_db,
 #   facility_db, patient_db, scheduling_db), mirroring the docker-compose
-#   trick used for local dev. `infra/render/migrate-all.js` (run as
-#   preDeployCommand) creates them on first deploy and then runs each
-#   service's own `prisma migrate deploy` against its own database.
+#   trick used for local dev. `infra/render/migrate-all.js` creates them
+#   (idempotently) and runs each service's own `prisma migrate deploy`
+#   against its own database — as the first step of container startup
+#   (`infra/render/entrypoint.sh`), not a Render preDeployCommand, since
+#   that feature isn't available on the free plan.
 # - Kafka is dropped entirely — there's no way to run a real always-on
 #   broker for free. KafkaService's connect is already best-effort (won't
 #   crash the service), and each write is still audited synchronously in
@@ -33,7 +35,8 @@
 #   fine for a demo/smoke-test load, not for anything resembling production.
 # - Free web services spin down after inactivity; the next request cold-
 #   starts all 5 processes together, which takes noticeably longer than a
-#   single-service cold start.
+#   single-service cold start — and now also re-runs the migration check
+#   (fast no-op once already applied, but adds a few seconds every time).
 #
 # Thing most likely to have drifted from Render's current schema by the
 # time you read this — fix from the blueprint-import error message if so:
@@ -53,7 +56,6 @@ services:
     plan: free
     dockerfilePath: ./infra/render/Dockerfile
     dockerContext: .
-    preDeployCommand: node infra/render/migrate-all.js
     healthCheckPath: /api/v1/health
     envVars:
       - key: DATABASE_URL

@@ -43,7 +43,8 @@ RUN corepack enable && npm install -g pm2
 WORKDIR /workspace
 ENV NODE_ENV=production
 COPY --from=build /workspace ./
-COPY infra/render/ecosystem.config.js infra/render/db-url.js infra/render/migrate-all.js infra/render/
+COPY infra/render/ecosystem.config.js infra/render/db-url.js infra/render/migrate-all.js infra/render/entrypoint.sh infra/render/
+RUN chmod +x infra/render/entrypoint.sh
 # No fixed EXPOSE: gateway (the only public process) binds whatever $PORT
 # Render injects at runtime, not a port baked in at build time.
-CMD ["pm2-runtime", "start", "infra/render/ecosystem.config.js"]
+CMD ["/workspace/infra/render/entrypoint.sh"]
