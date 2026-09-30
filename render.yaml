@@ -101,7 +101,6 @@ services:
     dockerfilePath: ./apps/identity/Dockerfile
     dockerContext: .
     preDeployCommand: pnpm exec prisma migrate deploy
-    healthCheckPath: /health
     envVars:
       - key: PORT
         value: "3001"
@@ -134,7 +133,6 @@ services:
     dockerfilePath: ./apps/facility/Dockerfile
     dockerContext: .
     preDeployCommand: pnpm exec prisma migrate deploy
-    healthCheckPath: /health
     envVars:
       - key: PORT
         value: "3002"
@@ -156,7 +154,6 @@ services:
     dockerfilePath: ./apps/patient/Dockerfile
     dockerContext: .
     preDeployCommand: pnpm exec prisma migrate deploy
-    healthCheckPath: /health
     envVars:
       - key: PORT
         value: "3003"
@@ -178,7 +175,6 @@ services:
     dockerfilePath: ./apps/scheduling/Dockerfile
     dockerContext: .
     preDeployCommand: pnpm exec prisma migrate deploy
-    healthCheckPath: /health
     envVars:
       - key: PORT
         value: "3004"
