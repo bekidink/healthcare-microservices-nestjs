@@ -32,6 +32,27 @@ const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/appointments', target: SCHEDULING_URL, downstreamPrefix: '/appointments' },
   { prefix: '/api/v1/queue', target: SCHEDULING_URL, downstreamPrefix: '/queue' },
   { prefix: '/api/v1/reminders', target: SCHEDULING_URL, downstreamPrefix: '/reminders' },
+
+  // Swagger UIs for each backend service — on the free single-container
+  // Render deploy these services have no public URL of their own, so this
+  // is the only way to browse their real API docs. Each service's own
+  // setupSwagger() call uses a single flat path segment matching its own
+  // name (e.g. identity -> 'identity', see apps/identity/src/main.ts) so
+  // that nestjs/swagger's relative asset hrefs (`./{path}/{asset}`) resolve
+  // correctly against this exact external path — a two-segment external
+  // path like `/docs/identity` only works because 'identity' is both the
+  // downstream service's own swagger path AND the last external segment.
+  // The `-json` route is a separate entry because Express's prefix mounting
+  // matches path segments, not string prefixes: `/docs/identity-json` is a
+  // sibling of `/docs/identity`, not a subpath of it.
+  { prefix: '/docs/identity-json', target: IDENTITY_URL, downstreamPrefix: '/identity-json' },
+  { prefix: '/docs/identity', target: IDENTITY_URL, downstreamPrefix: '/identity' },
+  { prefix: '/docs/facility-json', target: FACILITY_URL, downstreamPrefix: '/facility-json' },
+  { prefix: '/docs/facility', target: FACILITY_URL, downstreamPrefix: '/facility' },
+  { prefix: '/docs/patient-json', target: PATIENT_URL, downstreamPrefix: '/patient-json' },
+  { prefix: '/docs/patient', target: PATIENT_URL, downstreamPrefix: '/patient' },
+  { prefix: '/docs/scheduling-json', target: SCHEDULING_URL, downstreamPrefix: '/scheduling-json' },
+  { prefix: '/docs/scheduling', target: SCHEDULING_URL, downstreamPrefix: '/scheduling' },
 ];
 
 export function registerProxyRoutes(app: Express) {

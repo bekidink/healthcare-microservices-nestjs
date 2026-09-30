@@ -124,11 +124,13 @@ docker compose up --build
 
 | Service | Direct URL | Via gateway |
 |---|---|---|
-| Gateway | `http://localhost:3000` | — |
-| Identity | `http://localhost:3001` (`/docs` for Swagger) | `/api/v1/auth/*`, `/api/v1/users/*` |
-| Facility | `http://localhost:3002` (`/docs`) | `/api/v1/organizations/*`, `/api/v1/facilities/*`, `/api/v1/departments/*` |
-| Patient | `http://localhost:3003` (`/docs`) | `/api/v1/patients/*`, `/api/v1/merge-cases/*` |
-| Scheduling | `http://localhost:3004` (`/docs`) | `/api/v1/appointment-types/*`, `/api/v1/schedule-slots/*`, `/api/v1/appointments/*`, `/api/v1/queue/*`, `/api/v1/reminders/*` |
+| Gateway | `http://localhost:3000` (`/docs` for its own Swagger) | — |
+| Identity | `http://localhost:3001` (`/identity` for Swagger) | `/api/v1/auth/*`, `/api/v1/users/*` |
+| Facility | `http://localhost:3002` (`/facility`) | `/api/v1/organizations/*`, `/api/v1/facilities/*`, `/api/v1/departments/*` |
+| Patient | `http://localhost:3003` (`/patient`) | `/api/v1/patients/*`, `/api/v1/merge-cases/*` |
+| Scheduling | `http://localhost:3004` (`/scheduling`) | `/api/v1/appointment-types/*`, `/api/v1/schedule-slots/*`, `/api/v1/appointments/*`, `/api/v1/queue/*`, `/api/v1/reminders/*` |
+
+Each backend service's own Swagger path is a single flat segment matching its own name (`identity`, `facility`, `patient`, `scheduling`), not the `nestjs/swagger` default of `docs` — that's what lets the gateway proxy them publicly on the Render deploy (see below); nothing else changes locally, just the path.
 
 ## Deploying to Render (free tier)
 
@@ -140,6 +142,15 @@ docker compose up --build
 - **Redis is dropped too** — nothing in the codebase actually uses `REDIS_URL` yet (grep confirms it's scaffolded but never wired), so there's nothing lost by not standing one up.
 
 To deploy: push this repo to GitHub, then in the Render dashboard use **New → Blueprint** and point it at the repo.
+
+### Swagger on this deploy
+
+Only `gateway` has a public URL, so `https://<your-app>.onrender.com/docs` by itself only documents the gateway's own routes (just `/health` — the proxy routes aren't Nest controllers, so they don't show up there). The 4 backend services' real Swagger UIs are reachable through the gateway too, proxied at:
+
+- `/docs/identity`, `/docs/facility`, `/docs/patient`, `/docs/scheduling` (the HTML pages)
+- `/docs/identity-json`, `/docs/facility-json`, `/docs/patient-json`, `/docs/scheduling-json` (the raw OpenAPI documents, e.g. for importing into another tool)
+
+This only works because each service's own `setupSwagger()` call (`apps/*/src/main.ts`) uses a single flat path segment matching its own name (`identity`, not the `nestjs/swagger` default `docs`) — `nestjs/swagger` embeds its static asset hrefs as `./{path}/{asset}`, which only resolves correctly when that segment is also the last segment of whatever external URL actually reaches the page. The proxy routes for this live in `apps/gateway/src/proxy/proxy.setup.ts`, right after the `/api/v1/*` routes.
 
 Known limitations, worth being upfront about:
 - **RAM is shared and capped** across all 5 processes (Render's free web service gets 512MB total). A local smoke test measured all 5 idling at ~525MB combined right after boot — already over budget before any real traffic. If Render OOM-kills the container under load, this is the one limitation of the single-container approach that isn't just cosmetic; the paid, one-private-service-per-process topology (see below) is the real fix.

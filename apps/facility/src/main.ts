@@ -13,12 +13,14 @@ async function bootstrap() {
     description:
       'Organizations, facilities, departments, rooms, service catalog, provider department assignments/schedules, ' +
       'and capability-based facility configuration. Owns facility_db.',
+    // See identity/src/main.ts for why this is a single flat segment, not 'docs'.
+    path: 'facility',
   });
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3002;
   await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log(`[facility] listening on :${port} (docs at /docs)`);
+  console.log(`[facility] listening on :${port} (docs at /facility)`);
 }
 
 bootstrap();
