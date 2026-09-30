@@ -1,216 +1,66 @@
 # Render Blueprint — see https://render.com/docs/blueprint-spec
 #
-# Topology mirrors docker-compose.yml with two deliberate differences,
-# forced by what Render actually offers:
+# Free-tier topology. Render has no free private-service instance type and
+# only one free/expiring Postgres per account, which ruled out the "real"
+# microservices shape (one instance per service, Kafka as its own private
+# service) without a paid plan. Instead:
 #
-# 1. One managed Postgres instance PER service that owns data (instead of
-#    docker-compose's single Postgres container hosting multiple logical
-#    databases). Render's `fromDatabase` env var injection is scoped to one
-#    database per instance, so there's no clean way to hand each service a
-#    same-instance-different-dbname connection string via the blueprint —
-#    and this is arguably closer to the "each service owns its database"
-#    rule anyway. Costs 4 paid instances instead of 1.
-# 2. Kafka has no managed offering on Render, so it's self-hosted here as a
-#    private service running the same apache/kafka:3.8.0 image, single-node
-#    KRaft, with a persistent disk. This was an explicit choice over an
-#    external managed Kafka (Upstash/Confluent) to avoid a second signup and
-#    keep the client config (plain PLAINTEXT, no SASL) unchanged.
+# - All 5 backend processes (gateway + identity + facility + patient +
+#   scheduling) run inside ONE free web service / ONE container, managed by
+#   pm2-runtime (see infra/render/ecosystem.config.js). Only `gateway` binds
+#   Render's public $PORT; the other 4 listen on fixed ports reachable over
+#   localhost inside that same container — exactly like running `pnpm dev`
+#   locally without Docker, just co-located in one process group instead of
+#   one Render private service each.
+# - One free Postgres instance hosts all 4 logical databases (identity_db,
+#   facility_db, patient_db, scheduling_db), mirroring the docker-compose
+#   trick used for local dev. `infra/render/migrate-all.js` (run as
+#   preDeployCommand) creates them on first deploy and then runs each
+#   service's own `prisma migrate deploy` against its own database.
+# - Kafka is dropped entirely — there's no way to run a real always-on
+#   broker for free. KafkaService's connect is already best-effort (won't
+#   crash the service), and each write is still audited synchronously in
+#   the same DB transaction as the state change (AuditEvent) — only the
+#   async Kafka propagation dimension is missing here. OutboxEvent rows
+#   will retry and eventually land in FAILED after MAX_ATTEMPTS. Revisit
+#   once this needs to actually run on paid infrastructure.
+# - REDIS_URL is dropped too — grep confirmed nothing in the codebase
+#   actually uses it yet (scaffolded, never wired), so there's nothing to
+#   lose by not standing up a Redis instance for this deploy.
 #
-# Two things most likely to have drifted from Render's current schema by the
-# time you read this — fix from the blueprint-import error messages if so:
-#   - The Key Value (Redis) service `type` below (`redis`) — Render renamed
-#     the product to "Key Value" and may have renamed the blueprint type too.
-#   - The exact private-service internal address format
-#     (`http://<name>:<port>` — used for IDENTITY_SERVICE_URL etc. below).
+# Known limitations of bundling 5 Node processes into one free instance:
+# - RAM is shared and capped (free web services get 512MB) across all 5 —
+#   fine for a demo/smoke-test load, not for anything resembling production.
+# - Free web services spin down after inactivity; the next request cold-
+#   starts all 5 processes together, which takes noticeably longer than a
+#   single-service cold start.
 #
-# One-time manual steps after the first successful deploy (not automatable
-# from this file): none for the databases (each service runs its own
-# `prisma migrate deploy` via preDeployCommand on every deploy). You will
-# want to set CORS_ORIGINS on the gateway to your real frontend origin(s)
-# once you have them, and CORS_ORIGINS defaults to `*` here as a placeholder.
+# Thing most likely to have drifted from Render's current schema by the
+# time you read this — fix from the blueprint-import error message if so:
+# the free Postgres `plan: free` value/availability itself (Render's free
+# database tier terms/limits change more often than instance types do).
 
 databases:
-  - name: healthcare-identity-db
-    databaseName: identity_db
+  - name: healthcare-db
+    databaseName: healthcare
     user: healthcare
-    plan: starter
-    region: oregon
-
-  - name: healthcare-facility-db
-    databaseName: facility_db
-    user: healthcare
-    plan: starter
-    region: oregon
-
-  - name: healthcare-patient-db
-    databaseName: patient_db
-    user: healthcare
-    plan: starter
-    region: oregon
-
-  - name: healthcare-scheduling-db
-    databaseName: scheduling_db
-    user: healthcare
-    plan: starter
-    region: oregon
+    plan: free
 
 services:
-  # --- Redis (Key Value) — used by identity only, for now ---
-  - type: redis
-    name: healthcare-redis
-    plan: starter
-    region: oregon
-    ipAllowList: [] # empty = only reachable from other services in this account, never the public internet
-
-  # --- Kafka — self-hosted single-node KRaft broker, private-network only ---
-  - type: pserv
-    name: healthcare-kafka
-    env: image
-    region: oregon
-    plan: starter
-    image:
-      url: docker.io/apache/kafka:3.8.0
-    disk:
-      name: kafka-data
-      mountPath: /var/lib/kafka/data
-      sizeGB: 10
-    envVars:
-      - key: KAFKA_NODE_ID
-        value: "1"
-      - key: KAFKA_PROCESS_ROLES
-        value: broker,controller
-      - key: KAFKA_LISTENERS
-        value: PLAINTEXT://:9092,CONTROLLER://:9093
-      - key: KAFKA_ADVERTISED_LISTENERS
-        value: PLAINTEXT://healthcare-kafka:9092
-      - key: KAFKA_CONTROLLER_LISTENER_NAMES
-        value: CONTROLLER
-      - key: KAFKA_CONTROLLER_QUORUM_VOTERS
-        value: 1@healthcare-kafka:9093
-      - key: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
-        value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - key: KAFKA_INTER_BROKER_LISTENER_NAME
-        value: PLAINTEXT
-
-  # --- Identity (owns identity_db) ---
-  - type: pserv
-    name: identity
-    env: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./apps/identity/Dockerfile
-    dockerContext: .
-    preDeployCommand: pnpm exec prisma migrate deploy
-    envVars:
-      - key: PORT
-        value: "3001"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: healthcare-identity-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: healthcare-redis
-          property: connectionString
-      - key: KAFKA_BROKERS
-        value: healthcare-kafka:9092
-      - key: KAFKA_CLIENT_ID
-        value: identity-service
-      - key: JWT_ACCESS_SECRET
-        generateValue: true
-      - key: JWT_ACCESS_TTL
-        value: 15m
-      - key: JWT_REFRESH_TTL
-        value: 30d
-
-  # --- Facility (owns facility_db) ---
-  - type: pserv
-    name: facility
-    env: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./apps/facility/Dockerfile
-    dockerContext: .
-    preDeployCommand: pnpm exec prisma migrate deploy
-    envVars:
-      - key: PORT
-        value: "3002"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: healthcare-facility-db
-          property: connectionString
-      - key: KAFKA_BROKERS
-        value: healthcare-kafka:9092
-      - key: KAFKA_CLIENT_ID
-        value: facility-service
-
-  # --- Patient (owns patient_db) ---
-  - type: pserv
-    name: patient
-    env: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./apps/patient/Dockerfile
-    dockerContext: .
-    preDeployCommand: pnpm exec prisma migrate deploy
-    envVars:
-      - key: PORT
-        value: "3003"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: healthcare-patient-db
-          property: connectionString
-      - key: KAFKA_BROKERS
-        value: healthcare-kafka:9092
-      - key: KAFKA_CLIENT_ID
-        value: patient-service
-
-  # --- Scheduling (owns scheduling_db, calls Facility over REST) ---
-  - type: pserv
-    name: scheduling
-    env: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./apps/scheduling/Dockerfile
-    dockerContext: .
-    preDeployCommand: pnpm exec prisma migrate deploy
-    envVars:
-      - key: PORT
-        value: "3004"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: healthcare-scheduling-db
-          property: connectionString
-      - key: KAFKA_BROKERS
-        value: healthcare-kafka:9092
-      - key: KAFKA_CLIENT_ID
-        value: scheduling-service
-      - key: FACILITY_SERVICE_URL
-        value: http://facility:3002
-
-  # --- Gateway (public entry point — the only service with a public URL) ---
   - type: web
-    name: gateway
-    env: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./apps/gateway/Dockerfile
+    name: healthcare-app
+    runtime: docker
+    plan: free
+    dockerfilePath: ./infra/render/Dockerfile
     dockerContext: .
+    preDeployCommand: node infra/render/migrate-all.js
     healthCheckPath: /api/v1/health
     envVars:
-      - key: IDENTITY_SERVICE_URL
-        value: http://identity:3001
-      - key: FACILITY_SERVICE_URL
-        value: http://facility:3002
-      - key: PATIENT_SERVICE_URL
-        value: http://patient:3003
-      - key: SCHEDULING_SERVICE_URL
-        value: http://scheduling:3004
+      - key: DATABASE_URL
+        fromDatabase:
+          name: healthcare-db
+          property: connectionString
       - key: JWT_ACCESS_SECRET
-        fromService:
-          type: pserv
-          name: identity
-          envVarKey: JWT_ACCESS_SECRET
+        generateValue: true
       - key: CORS_ORIGINS
         value: "*" # tighten to your real frontend origin(s) once known

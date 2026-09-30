@@ -130,19 +130,27 @@ docker compose up --build
 | Patient | `http://localhost:3003` (`/docs`) | `/api/v1/patients/*`, `/api/v1/merge-cases/*` |
 | Scheduling | `http://localhost:3004` (`/docs`) | `/api/v1/appointment-types/*`, `/api/v1/schedule-slots/*`, `/api/v1/appointments/*`, `/api/v1/queue/*`, `/api/v1/reminders/*` |
 
-## Deploying to Render
+## Deploying to Render (free tier)
 
-`render.yaml` at the repo root is a [Blueprint](https://render.com/docs/blueprint-spec) that provisions the whole platform: 4 managed Postgres instances (one per service that owns data — identity/facility/patient/scheduling each get their own, rather than the single-instance-multiple-logical-databases trick `docker-compose.yml` uses locally), a managed Redis (Key Value) instance, a self-hosted single-node Kafka broker (private service + persistent disk — Render has no managed Kafka), the four internal app services as private services, and the gateway as the one public web service.
+`render.yaml` at the repo root is a [Blueprint](https://render.com/docs/blueprint-spec) for a **$0 deploy**. Render has no free private-service instance type and only one free Postgres per account, which doesn't fit the "real" topology (one instance per service, Kafka as its own always-on broker) without a paid plan — so this blueprint takes a deliberately different shape just to stay free:
 
-To deploy: push this repo to GitHub, then in the Render dashboard use **New → Blueprint** and point it at the repo. Render reads `render.yaml` and provisions everything in one pass, including running each service's `prisma migrate deploy` automatically before every deploy (via `preDeployCommand`) and generating/sharing the JWT secret between identity and the gateway automatically.
+- All 5 backend processes (gateway + identity + facility + patient + scheduling) run inside **one** free web service, as one Docker image, managed by [pm2-runtime](https://pm2.keymetrics.io/) (`infra/render/ecosystem.config.js`). Only `gateway` binds Render's public `$PORT`; the other 4 listen on fixed ports over `localhost` inside that same container — the same shape as running `pnpm dev` locally, just co-located instead of one Render private service each.
+- One free Postgres instance hosts all 4 logical databases (`identity_db`, `facility_db`, `patient_db`, `scheduling_db`), mirroring the `docker-compose.yml` trick used locally. `infra/render/migrate-all.js` runs as `preDeployCommand` on every deploy: it creates the 4 databases if missing, then runs each service's own `prisma migrate deploy` against its own database (`infra/render/db-url.js` derives each per-service connection string from the one Render-injected `DATABASE_URL` by swapping the database name).
+- **Kafka is dropped entirely** — no way to run a real always-on broker for free. `KafkaService.onModuleInit` already treats a failed connect as best-effort (logs a warning, doesn't crash the service — see `packages/shared/src/kafka/kafka.service.ts`), and every write is still audited synchronously in the same DB transaction as the state change regardless of Kafka (`AuditEvent`) — only the async Kafka propagation dimension is missing on this deploy. `OutboxEvent` rows will retry on their poll cycle and eventually land in `FAILED` after `MAX_ATTEMPTS`.
+- **Redis is dropped too** — nothing in the codebase actually uses `REDIS_URL` yet (grep confirms it's scaffolded but never wired), so there's nothing lost by not standing one up.
+
+To deploy: push this repo to GitHub, then in the Render dashboard use **New → Blueprint** and point it at the repo.
+
+Known limitations, worth being upfront about:
+- **RAM is shared and capped** across all 5 processes (Render's free web service gets 512MB total) — fine for a demo/smoke test, not for real load.
+- **Cold starts are slower**: free web services spin down after inactivity, and the next request has to boot all 5 processes together.
+- One thing most likely to have drifted from Render's current schema by the time you read this: the free Postgres `plan: free` value/availability itself — Render's free database tier terms change more often than instance types do. Fix from the blueprint-import error message if it complains.
 
 Two things to do once, after the first deploy:
-- Update the gateway's `CORS_ORIGINS` env var from the placeholder `*` to your real frontend origin(s).
-- If you don't already have an identity role/permission seed in `identity_db`, run `pnpm exec ts-node prisma/seed.ts` once via a Render shell/job against the deployed `identity` service (the local `prisma:seed` script does this).
+- Update `CORS_ORIGINS` from the placeholder `*` to your real frontend origin(s).
+- Seed identity's starter roles/permissions once via a Render shell against the deployed service: `cd apps/identity && pnpm exec ts-node prisma/seed.ts` (with `DATABASE_URL` pointed at `identity_db`, same as `infra/render/migrate-all.js` does).
 
-Known deploy-specific caveats, flagged in comments at the top of `render.yaml`:
-- The blueprint's `redis` service type and the exact private-service internal address format (`http://<name>:<port>`) are the two fields most likely to have drifted from Render's current schema — if the blueprint import errors on either, fix from the error message and Render's current Blueprint docs.
-- Self-hosted Kafka on a private service has no automatic failover — it's one broker, one disk. Fine for this stage of the project; revisit if/when uptime requirements tighten.
+When you're ready to move past a demo — real uptime, real Kafka, isolated databases per service — the natural next step is the paid Render topology (one Postgres per service, Kafka as its own private service + disk, each backend service as its own private service) or a different host better suited to a real microservices+Kafka stack (a VPS running `docker-compose.yml` as-is, or Railway/Fly.io). Ask and I'll build whichever you want.
 
 ## Known gaps
 
