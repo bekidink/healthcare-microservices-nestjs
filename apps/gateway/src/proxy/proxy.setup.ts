@@ -4,10 +4,9 @@ import { REQUEST_ID_HEADER } from '@healthcare/shared';
 
 /**
  * Route table mapping a public, versioned path prefix to a downstream
- * service. As new services come online (Phase 3 Facility, Phase 4
- * Patient/MPI, ...) they're added here rather than the gateway growing
- * per-route logic of its own — the gateway stays a thin routing/auth-context
- * layer, never a place business logic accumulates.
+ * service. As new services come online they're added here rather than the
+ * gateway growing per-route logic of its own — the gateway stays a thin
+ * routing/auth-context layer, never a place business logic accumulates.
  *
  * `downstreamPrefix` is what the target service's own route table actually
  * expects (e.g. identity's AuthController is mounted at `/auth`). Note:
@@ -15,17 +14,18 @@ import { REQUEST_ID_HEADER } from '@healthcare/shared';
  * before the proxy middleware ever sees it — so rewriting is "re-add
  * downstreamPrefix to whatever's left", not a regex over the original path.
  */
+const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL || 'http://localhost:3001';
+const FACILITY_URL = process.env.FACILITY_SERVICE_URL || 'http://localhost:3002';
+const PATIENT_URL = process.env.PATIENT_SERVICE_URL || 'http://localhost:3003';
+
 const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
-  {
-    prefix: '/api/v1/auth',
-    target: process.env.IDENTITY_SERVICE_URL || 'http://localhost:3001',
-    downstreamPrefix: '/auth',
-  },
-  {
-    prefix: '/api/v1/users',
-    target: process.env.IDENTITY_SERVICE_URL || 'http://localhost:3001',
-    downstreamPrefix: '/users',
-  },
+  { prefix: '/api/v1/auth', target: IDENTITY_URL, downstreamPrefix: '/auth' },
+  { prefix: '/api/v1/users', target: IDENTITY_URL, downstreamPrefix: '/users' },
+  { prefix: '/api/v1/organizations', target: FACILITY_URL, downstreamPrefix: '/organizations' },
+  { prefix: '/api/v1/facilities', target: FACILITY_URL, downstreamPrefix: '/facilities' },
+  { prefix: '/api/v1/departments', target: FACILITY_URL, downstreamPrefix: '/departments' },
+  { prefix: '/api/v1/patients', target: PATIENT_URL, downstreamPrefix: '/patients' },
+  { prefix: '/api/v1/merge-cases', target: PATIENT_URL, downstreamPrefix: '/merge-cases' },
 ];
 
 export function registerProxyRoutes(app: Express) {

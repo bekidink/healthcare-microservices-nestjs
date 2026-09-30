@@ -2,12 +2,13 @@ import { Module } from '@nestjs/common';
 import { KafkaModule } from '@healthcare/shared';
 import { PrismaModule } from './prisma/prisma.module';
 import { OutboxPublisherService } from './kafka/outbox-publisher.service';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
+import { OrganizationsModule } from './organizations/organizations.module';
+import { FacilitiesModule } from './facilities/facilities.module';
+import { DepartmentsModule } from './departments/departments.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
-  imports: [PrismaModule, KafkaModule, AuthModule, UsersModule],
+  imports: [PrismaModule, KafkaModule, OrganizationsModule, FacilitiesModule, DepartmentsModule],
   controllers: [HealthController],
   providers: [OutboxPublisherService],
 })

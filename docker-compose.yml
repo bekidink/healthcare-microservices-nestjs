@@ -82,9 +82,13 @@ services:
     environment:
       PORT: 3000
       IDENTITY_SERVICE_URL: http://identity:3001
+      FACILITY_SERVICE_URL: http://facility:3002
+      PATIENT_SERVICE_URL: http://patient:3003
       JWT_ACCESS_SECRET: dev-access-secret-change-me
     depends_on:
       - identity
+      - facility
+      - patient
 
   identity:
     build:
@@ -98,6 +102,7 @@ services:
       DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/identity_db?schema=public
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: identity-service
       JWT_ACCESS_SECRET: dev-access-secret-change-me
       JWT_ACCESS_TTL: 15m
       JWT_REFRESH_TTL: 30d
@@ -105,6 +110,42 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  facility:
+    build:
+      context: .
+      dockerfile: apps/facility/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: 3002
+      DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/facility_db?schema=public
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: facility-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  patient:
+    build:
+      context: .
+      dockerfile: apps/patient/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      PORT: 3003
+      DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/patient_db?schema=public
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: patient-service
+    depends_on:
+      postgres:
         condition: service_healthy
       kafka:
         condition: service_healthy

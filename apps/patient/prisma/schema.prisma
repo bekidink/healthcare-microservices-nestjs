@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Platform-wide patient identity, independent of any facility's own MRN
+// (PRD Sec 6: "Platform patient ID independent of facility MRN"). A MERGED
+// patient's row is never deleted — `mergedIntoPatientId` points at the
+// survivor and the row stays as immutable history (PRD Sec 6: "Immutable
+// identity history" / Sec 28: "Duplicate patient: flag and route to MPI
+// review; do not silently merge").
+model Patient {
+  id                  String    @id @default(uuid())
+  firstName           String
+  lastName             String
+  dateOfBirth          DateTime  @db.Date
+  gender               String? // free-text/coded value, intentionally not an enum here — configurable per deployment
+  status               String    @default("active") // active | merged | inactive
+  mergedIntoPatientId  String?
+
+  identifiers  PatientIdentifier[]
+  contacts     PatientContact[]
+  consents     Consent[]
+  accessGrants AccessGrant[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lastName, firstName, dateOfBirth])
+  @@map("patients")
+}
+
+// Multiple identifiers per patient (PRD Sec 6): facility MRN, national ID,
+// insurance ID, phone, other approved identifiers. `issuingContext` is a
+// Facility-service facility/organization id, referenced by value only.
+model PatientIdentifier {
+  id             String    @id @default(uuid())
+  patientId      String
+  type           String // facility_mrn | national_id | insurance_id | phone | passport
+  value          String
+  issuingContext String?
+  isPrimary      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([type, value])
+  @@map("patient_identifiers")
+}
+
+model PatientContact {
+  id        String  @id @default(uuid())
+  patientId String
+  type      String // phone | email | address
+  value     String
+  label     String? // home | work | emergency
+  isPrimary Boolean @default(false)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+  @@map("patient_contacts")
+}
+
+// PRD Sec 21: "Consent records with purpose, scope, time and withdrawal
+// where applicable." Never deleted on withdrawal — `withdrawnAt` is set
+// instead, preserving the full consent history.
+model Consent {
+  id          String    @id @default(uuid())
+  patientId   String
+  purpose     String
+  scope       Json      @default("{}")
+  grantedBy   String
+  grantedAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  withdrawnAt DateTime?
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("consents")
+}
+
+// PRD Sec 17: "Caregiver/dependent accounts with explicit authorization."
+// `granteeUserId` is an Identity-service user id, referenced by value only.
+model AccessGrant {
+  id            String    @id @default(uuid())
+  patientId     String
+  granteeUserId String
+  relationship  String // caregiver | parent | guardian | dependent_self
+  scope         Json      @default("{}")
+  grantedBy     String
+  grantedAt     DateTime  @default(now())
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([granteeUserId])
+  @@map("access_grants")
+}
+
+// PRD Sec 6/28: "Duplicate detection before registration" + "Human review
+// for merge/unmerge; preserve source histories" + "Flag and route to MPI
+// review; do not silently merge." One row per candidate-pair review, never
+// an automatic merge — MergeCase.status only becomes MERGED after an
+// explicit POST /merge-cases/:id/confirm by an authorized human reviewer.
+model MergeCase {
+  id                 String    @id @default(uuid())
+  patientAId         String
+  patientBId         String
+  matchScore         Int // 0-100, heuristic confidence at the time the case was opened
+  matchReason        Json // which fields matched (nationalId/name+dob/name+phone/...)
+  status             String    @default("open") // open | confirmed_duplicate | rejected | merged
+  survivorPatientId  String?
+  decidedBy          String?
+  decidedAt          DateTime?
+  decisionNotes      String?
+  createdAt          DateTime  @default(now())
+
+  @@index([patientAId])
+  @@index([patientBId])
+  @@index([status])
+  @@map("merge_cases")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

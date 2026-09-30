@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Top-level tenant: a healthcare network, a single hospital/clinic that
+// isn't part of a bigger group, a pharmacy chain, or a diagnostic-center
+// operator. Membership/RBAC (who can act on this org) lives in the Identity
+// service, referenced only by ID — never joined across databases.
+model Organization {
+  id          String @id @default(uuid())
+  legalName   String
+  displayName String
+  type        String // healthcare_network | hospital | clinic | pharmacy_chain | diagnostic_center
+  status      String @default("active") // active | suspended
+
+  facilities Facility[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("organizations")
+}
+
+// A physical site: PRD Sec 3 — "Hospital → departments, wards, beds,
+// pharmacy, lab, radiology, emergency, theatre" / "Clinic → outpatient
+// services, queues, encounters, pharmacy/lab where enabled" / standalone
+// Pharmacy / Diagnostic Center. What a given facility actually runs is
+// governed by FacilityConfiguration below, not by `type` alone — a hospital
+// can have theatre/inpatient disabled early on, a clinic can enable a small
+// lab, etc.
+model Facility {
+  id             String  @id @default(uuid())
+  organizationId String
+  name           String
+  type           String // hospital | clinic | pharmacy | diagnostic_center
+  status         String  @default("active") // active | suspended | closed
+  addressLine    String?
+  city           String?
+  region         String?
+  country        String  @default("ET")
+  phone          String?
+  email          String?
+
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departments    Department[]
+  services       FacilityService[]
+  schedules      ProviderSchedule[]
+  configuration  FacilityConfiguration?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("facilities")
+}
+
+// Capability-based configuration (PRD Sec 3): "A small clinic should not be
+// forced to run inpatient or theatre modules, while a hospital can activate
+// them without changing the patient identity or clinical core." One row per
+// facility; `capabilities` is a flat map of capability-key -> boolean so new
+// capabilities can be added later without a migration.
+model FacilityConfiguration {
+  id           String @id @default(uuid())
+  facilityId   String @unique
+  capabilities Json   @default("{}")
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("facility_configurations")
+}
+
+model Department {
+  id         String @id @default(uuid())
+  facilityId String
+  name       String
+  type       String // outpatient | inpatient | emergency | lab | radiology | pharmacy | theatre | administration
+  status     String @default("active")
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  rooms              Room[]
+  services           FacilityService[]
+  providerAssignments ProviderDepartment[]
+  schedules          ProviderSchedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([facilityId])
+  @@map("departments")
+}
+
+model Room {
+  id           String  @id @default(uuid())
+  departmentId String
+  name         String
+  code         String?
+  type         String // consultation | ward | bed_bay | theatre | lab_bench | imaging_suite
+  capacity     Int     @default(1)
+  status       String  @default("available") // available | occupied | cleaning | maintenance | blocked
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departmentId])
+  @@map("rooms")
+}
+
+// A billable/offered service (consultation type, lab panel, imaging study,
+// procedure...) at a facility, optionally scoped to one department. Actual
+// price lists live in Billing (Phase 10) — this is the catalog entry only.
+model FacilityService {
+  id           String  @id @default(uuid())
+  facilityId   String
+  departmentId String?
+  name         String
+  code         String
+  isBillable   Boolean @default(true)
+  status       String  @default("active")
+
+  facility   Facility    @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([facilityId, code])
+  @@index([facilityId])
+  @@map("facility_services")
+}
+
+// providerId is an Identity-service User/ProviderProfile id, referenced by
+// value only — Identity remains the system of record for who that person
+// is; this table only records that they work in this department.
+model ProviderDepartment {
+  id           String    @id @default(uuid())
+  providerId   String
+  departmentId String
+  roleTitle    String?
+  startDate    DateTime  @default(now())
+  endDate      DateTime?
+  status       String    @default("active")
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, departmentId])
+  @@index([departmentId])
+  @@map("provider_departments")
+}
+
+model ProviderSchedule {
+  id           String    @id @default(uuid())
+  providerId   String
+  facilityId   String
+  departmentId String?
+  dayOfWeek    Int // 0 (Sunday) - 6 (Saturday)
+  startTime    String // "HH:mm", facility-local time
+  endTime      String
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  status        String   @default("active")
+
+  facility   Facility    @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@index([providerId, facilityId])
+  @@map("provider_schedules")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}
