@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A single notification "send" attempt — created and (simulated-)delivered
+// in the same call, see NotificationsService.create's doc comment for why
+// there is no real SMS/email/push provider integration here.
+//
+// sourceType/sourceId trace a notification back to whatever triggered it
+// (e.g. "Reminder" + a Scheduling Reminder id) for auditability and for the
+// reminder poller's own dedup check. This is deliberately an @@index, not a
+// @@unique: Prisma can't cleanly express a uniqueness constraint across a
+// pair of nullable columns (two rows with sourceType/sourceId both NULL —
+// i.e. two notifications created directly via POST /notifications with no
+// source — would violate a naive unique index under at least some
+// interpretations, and partial/filtered unique indexes aren't something
+// Prisma's schema DSL expresses directly). Instead, whatever creates a
+// sourced NotificationMessage (currently only ReminderPollerService) is
+// responsible for checking-before-create itself — see that service's doc
+// comment for the exact (best-effort, not airtight) race this leaves open.
+model NotificationMessage {
+  id            String    @id @default(uuid())
+  channel       String // sms | email | push
+  recipientId   String
+  templateCode  String
+  payload       Json
+  status        String    @default("pending") // pending | sent | failed
+  sourceType    String?
+  sourceId      String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([sourceType, sourceId])
+  @@map("notification_messages")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

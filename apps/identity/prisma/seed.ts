@@ -21,6 +21,10 @@ const PERMISSIONS = [
   'invoice.void',
   'user.manage',
   'role.manage',
+  // Infrastructure-level: creating/editing an organization or the facilities
+  // under it. Hospital-admin-tier, not something a clinician/receptionist/
+  // billing_clerk should ever hold.
+  'organization.manage',
 ];
 
 const ROLES: Record<string, string[]> = {

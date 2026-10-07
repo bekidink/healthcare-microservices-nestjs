@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Milestone 9 ("Inpatient + Emergency") is one service covering both halves
+// of the domain — ward/bed/admission management AND emergency-room triage —
+// the same way "Scheduling + Queue" (Milestone 3) and "Clinical + Encounter"
+// (Milestone 4) were each a single service for their milestone. The infra
+// provisioning script also carved out a separate `emergency_db`, but it is
+// deliberately left unused here (same precedent as `orders_db` sitting
+// unused since Milestone 5 used `lab_db` instead) — this one service owns
+// both halves of the domain in `inpatient_db`.
+
+// A physical ward within a facility (Facility-service facilityId, never a
+// query against facility_db directly).
+model Ward {
+  id         String @id @default(uuid())
+  facilityId String
+  name       String
+  type       String // general | icu | maternity | pediatric
+
+  beds Bed[]
+
+  @@index([facilityId])
+  @@map("wards")
+}
+
+// A single bed within a ward. Status is a small state machine of its own,
+// independent of whatever Admission currently occupies it (or doesn't):
+// available -> occupied -> cleaning -> available, with out_of_service
+// reachable administratively. See BedsService for the guarded transitions.
+model Bed {
+  id        String @id @default(uuid())
+  wardId    String
+  bedNumber String
+  status    String @default("available") // available | occupied | cleaning | out_of_service
+
+  ward        Ward         @relation(fields: [wardId], references: [id], onDelete: Cascade)
+  admissions  Admission[]
+  transfersIn  Transfer[]  @relation("TransferToBed")
+  transfersOut Transfer[]  @relation("TransferFromBed")
+
+  @@unique([wardId, bedNumber])
+  @@map("beds")
+}
+
+// An inpatient stay. encounterId is optional — an admission can be linked to
+// a Clinical-service encounter purely for enrichment (fetched via
+// ClinicalClientService for validation, never a query against clinical_db),
+// but it is not required: an admission can also follow a completed
+// encounter (e.g. post-surgical) or arrive straight from the ER with no
+// encounter at all.
+model Admission {
+  id                  String    @id @default(uuid())
+  patientId           String
+  encounterId         String?
+  wardId              String
+  bedId               String
+  admittingProviderId String
+  status              String    @default("admitted") // admitted | discharged
+  admittedAt          DateTime  @default(now())
+  dischargedAt        DateTime?
+  dischargeNotes      String?
+
+  bed       Bed        @relation(fields: [bedId], references: [id])
+  transfers Transfer[]
+
+  @@index([patientId])
+  @@index([wardId, status])
+  @@map("admissions")
+}
+
+// A bed-to-bed move within the same admission (ward change, ICU step-down,
+// etc). The old bed goes to cleaning, the new bed goes to occupied — see
+// AdmissionsService.transfer.
+model Transfer {
+  id            String   @id @default(uuid())
+  admissionId   String
+  fromBedId     String
+  toBedId       String
+  reason        String
+  transferredAt DateTime @default(now())
+
+  admission Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  fromBed   Bed       @relation("TransferFromBed", fields: [fromBedId], references: [id])
+  toBed     Bed       @relation("TransferToBed", fields: [toBedId], references: [id])
+
+  @@index([admissionId])
+  @@map("transfers")
+}
+
+// An ER visit. triageLevel is 1 (most critical) to 5 (least critical) — the
+// range is validated in the DTO, not the schema. A visit can resolve either
+// by being admitted (which creates a real Admission row — see
+// EmergencyVisitsService.admit) or by a direct ER discharge with no
+// admission at all.
+model EmergencyVisit {
+  id             String    @id @default(uuid())
+  patientId      String
+  facilityId     String
+  chiefComplaint String
+  triageLevel    Int
+  status         String    @default("waiting") // waiting | in_treatment | admitted | discharged
+  arrivedAt      DateTime  @default(now())
+  dischargedAt   DateTime?
+
+  @@index([facilityId, status])
+  @@index([patientId])
+  @@map("emergency_visits")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

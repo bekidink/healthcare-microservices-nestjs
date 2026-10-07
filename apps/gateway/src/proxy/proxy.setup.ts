@@ -21,6 +21,12 @@ const SCHEDULING_URL = process.env.SCHEDULING_SERVICE_URL || 'http://localhost:3
 const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || 'http://localhost:3005';
 const LAB_URL = process.env.LAB_SERVICE_URL || 'http://localhost:3006';
 const PHARMACY_URL = process.env.PHARMACY_SERVICE_URL || 'http://localhost:3007';
+const FINANCE_URL = process.env.FINANCE_SERVICE_URL || 'http://localhost:3008';
+const COMMUNICATION_URL = process.env.COMMUNICATION_SERVICE_URL || 'http://localhost:3009';
+const INPATIENT_URL = process.env.INPATIENT_SERVICE_URL || 'http://localhost:3010';
+const SUPPLY_URL = process.env.SUPPLY_SERVICE_URL || 'http://localhost:3011';
+const INTEROP_URL = process.env.INTEROP_SERVICE_URL || 'http://localhost:3012';
+const ANALYTICS_URL = process.env.ANALYTICS_SERVICE_URL || 'http://localhost:3013';
 
 const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/auth', target: IDENTITY_URL, downstreamPrefix: '/auth' },
@@ -45,6 +51,20 @@ const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/prescriptions', target: PHARMACY_URL, downstreamPrefix: '/prescriptions' },
   { prefix: '/api/v1/inventory-items', target: PHARMACY_URL, downstreamPrefix: '/inventory-items' },
   { prefix: '/api/v1/prescription-items', target: PHARMACY_URL, downstreamPrefix: '/prescription-items' },
+  { prefix: '/api/v1/invoices', target: FINANCE_URL, downstreamPrefix: '/invoices' },
+  { prefix: '/api/v1/payments', target: FINANCE_URL, downstreamPrefix: '/payments' },
+  { prefix: '/api/v1/notifications', target: COMMUNICATION_URL, downstreamPrefix: '/notifications' },
+  { prefix: '/api/v1/wards', target: INPATIENT_URL, downstreamPrefix: '/wards' },
+  { prefix: '/api/v1/beds', target: INPATIENT_URL, downstreamPrefix: '/beds' },
+  { prefix: '/api/v1/admissions', target: INPATIENT_URL, downstreamPrefix: '/admissions' },
+  { prefix: '/api/v1/emergency-visits', target: INPATIENT_URL, downstreamPrefix: '/emergency-visits' },
+  { prefix: '/api/v1/supply-items', target: SUPPLY_URL, downstreamPrefix: '/supply-items' },
+  { prefix: '/api/v1/insurance-policies', target: SUPPLY_URL, downstreamPrefix: '/insurance-policies' },
+  { prefix: '/api/v1/claims', target: SUPPLY_URL, downstreamPrefix: '/claims' },
+  { prefix: '/api/v1/referrals', target: SUPPLY_URL, downstreamPrefix: '/referrals' },
+  { prefix: '/api/v1/fhir', target: INTEROP_URL, downstreamPrefix: '/fhir' },
+  { prefix: '/api/v1/analytics', target: ANALYTICS_URL, downstreamPrefix: '/analytics' },
+  { prefix: '/api/v1/ai', target: ANALYTICS_URL, downstreamPrefix: '/ai' },
 
   // Swagger UIs for each backend service — on the free single-container
   // Render deploy these services have no public URL of their own, so this
@@ -72,6 +92,18 @@ const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/docs/lab', target: LAB_URL, downstreamPrefix: '/lab' },
   { prefix: '/docs/pharmacy-json', target: PHARMACY_URL, downstreamPrefix: '/pharmacy-json' },
   { prefix: '/docs/pharmacy', target: PHARMACY_URL, downstreamPrefix: '/pharmacy' },
+  { prefix: '/docs/finance-json', target: FINANCE_URL, downstreamPrefix: '/finance-json' },
+  { prefix: '/docs/finance', target: FINANCE_URL, downstreamPrefix: '/finance' },
+  { prefix: '/docs/communication-json', target: COMMUNICATION_URL, downstreamPrefix: '/communication-json' },
+  { prefix: '/docs/communication', target: COMMUNICATION_URL, downstreamPrefix: '/communication' },
+  { prefix: '/docs/inpatient-json', target: INPATIENT_URL, downstreamPrefix: '/inpatient-json' },
+  { prefix: '/docs/inpatient', target: INPATIENT_URL, downstreamPrefix: '/inpatient' },
+  { prefix: '/docs/supply-json', target: SUPPLY_URL, downstreamPrefix: '/supply-json' },
+  { prefix: '/docs/supply', target: SUPPLY_URL, downstreamPrefix: '/supply' },
+  { prefix: '/docs/interop-json', target: INTEROP_URL, downstreamPrefix: '/interop-json' },
+  { prefix: '/docs/interop', target: INTEROP_URL, downstreamPrefix: '/interop' },
+  { prefix: '/docs/analytics-json', target: ANALYTICS_URL, downstreamPrefix: '/analytics-json' },
+  { prefix: '/docs/analytics', target: ANALYTICS_URL, downstreamPrefix: '/analytics' },
 ];
 
 export function registerProxyRoutes(app: Express) {

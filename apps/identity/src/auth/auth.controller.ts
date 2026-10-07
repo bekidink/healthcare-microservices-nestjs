@@ -6,6 +6,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { OtpRequestDto, OtpVerifyDto } from './dto/otp.dto';
+import { SwitchOrganizationDto } from './dto/switch-organization.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser, type AuthenticatedUser } from './current-user.decorator';
 
@@ -54,5 +55,22 @@ export class AuthController {
   @Post('otp/verify')
   verifyOtp(@Body() dto: OtpVerifyDto) {
     return this.authService.verifyOtp(dto);
+  }
+
+  @ApiOperation({
+    summary: "Re-scope the current session to a different organization the caller is a member of",
+    description:
+      'Issues a fresh access token with a new activeOrganizationId — for staff who belong to more than one ' +
+      'hospital/organization. The refresh token and session identity are unchanged.',
+  })
+  @ApiBearerAuth()
+  @Post('switch-organization')
+  @UseGuards(JwtAuthGuard)
+  switchOrganization(@CurrentUser() user: AuthenticatedUser, @Body() dto: SwitchOrganizationDto) {
+    return this.authService.switchOrganization({
+      userId: user.userId,
+      sessionId: user.sessionId,
+      organizationId: dto.organizationId,
+    });
   }
 }

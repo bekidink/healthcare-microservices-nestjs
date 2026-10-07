@@ -7,3 +7,6 @@ export * from './http/request-id';
 export * from './swagger/setup-swagger';
 export * from './kafka/kafka.service';
 export * from './kafka/kafka.module';
+export * from './auth/jwt-verify.guard';
+export * from './auth/jwt-verify.module';
+export * from './auth/permission.guard';

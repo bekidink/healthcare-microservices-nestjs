@@ -6,6 +6,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { HealthController } from './health/health.controller';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { AuthContextMiddleware } from './common/auth-context.middleware';
+import { IdentityClientModule } from './identity-client/identity-client.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AuthContextMiddleware } from './common/auth-context.middleware';
         limit: 120, // per IP, across the whole gateway; tighten per-route later as needed
       },
     ]),
+    IdentityClientModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

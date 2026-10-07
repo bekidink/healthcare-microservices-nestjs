@@ -28,7 +28,7 @@ export class InternalController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('permissions')
-  async getPermissions(@Query('userId') userId: string, @Query('organizationId') organizationId: string) {
+  async getPermissions(@Query('userId') userId: string, @Query('organizationId') organizationId?: string) {
     const permissions = await this.usersService.resolvePermissions(userId, organizationId);
     return { permissions };
   }

@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A facility's stock catalog entry for one general (non-pharmaceutical)
+// supply item — gloves, syringes, bandages, and the like, distinct from
+// Pharmacy's medication InventoryItem. Core rule, reused deliberately from
+// Pharmacy for consistency: "supply stock changes must create ledger
+// movements" — quantityOnHand is never updated on its own; every write path
+// that touches it (receive, adjust, consume) creates a SupplyLedgerEntry in
+// the SAME transaction as the only way it ever changes. There is
+// deliberately no direct "set quantity" endpoint anywhere in this service.
+model SupplyItem {
+  id             String @id @default(uuid())
+  facilityId     String
+  itemCode       String
+  itemName       String
+  quantityOnHand Int    @default(0)
+  reorderLevel   Int    @default(0)
+
+  ledgerEntries SupplyLedgerEntry[]
+
+  @@unique([facilityId, itemCode])
+  @@index([facilityId])
+  @@map("supply_items")
+}
+
+// Append-only — never updated or deleted once written. balanceAfter is
+// recorded at write time (not recomputed later) so the ledger reads as a
+// true audit trail even if SupplyItem.quantityOnHand is ever investigated
+// for drift. Mirrors Pharmacy's StockLedgerEntry exactly.
+model SupplyLedgerEntry {
+  id             String   @id @default(uuid())
+  supplyItemId   String
+  movementType   String // receipt | consumption | adjustment | waste
+  quantityDelta  Int // positive for receipt/adjustment-up, negative for consumption/waste
+  balanceAfter   Int
+  referenceType  String? // e.g. "WardUsage"
+  referenceId    String?
+  performedBy    String
+  notes          String?
+  performedAt    DateTime @default(now())
+
+  supplyItem SupplyItem @relation(fields: [supplyItemId], references: [id], onDelete: Cascade)
+
+  @@index([supplyItemId, performedAt])
+  @@map("supply_ledger_entries")
+}
+
+// A patient's insurance coverage. Policies are referenced by id only from
+// Claim (and, by value, from the Finance service's Invoice) — never a
+// cross-db join.
+model InsurancePolicy {
+  id             String    @id @default(uuid())
+  patientId      String
+  payerName      String
+  policyNumber   String
+  groupNumber    String?
+  status         String    @default("active") // active | expired
+  effectiveDate  DateTime  @db.Date
+  expirationDate DateTime? @db.Date
+
+  claims Claim[]
+
+  @@index([patientId])
+  @@map("insurance_policies")
+}
+
+// A claim submitted against an InsurancePolicy for reimbursement of an
+// invoice. invoiceId references a Finance-service Invoice by id only — this
+// service never queries finance_db directly, the same "reference by id,
+// never cross-db join" principle used everywhere else in this codebase.
+model Claim {
+  id             String    @id @default(uuid())
+  policyId       String
+  invoiceId      String?
+  amountClaimed  Float
+  status         String    @default("submitted") // submitted | approved | denied | paid
+  submittedAt    DateTime  @default(now())
+  decidedAt      DateTime?
+  decisionNotes  String?
+
+  policy InsurancePolicy @relation(fields: [policyId], references: [id])
+
+  @@index([policyId])
+  @@index([status])
+  @@map("claims")
+}
+
+// A referral of a patient from one provider to another provider and/or
+// facility. toFacilityId/toProviderId are both optional (at least one is
+// required by ReferralsService.create) since a referral may target a
+// specific provider, a facility generally, or both.
+model Referral {
+  id             String    @id @default(uuid())
+  patientId      String
+  fromProviderId String
+  toFacilityId   String?
+  toProviderId   String?
+  reason         String
+  status         String    @default("pending") // pending | accepted | completed | declined
+  createdAt      DateTime  @default(now())
+  decidedAt      DateTime?
+
+  @@index([patientId])
+  @@map("referrals")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

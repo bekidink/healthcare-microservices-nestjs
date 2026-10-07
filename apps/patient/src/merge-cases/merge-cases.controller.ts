@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PermissionGuard, RequirePermissions } from '@healthcare/shared';
 import { MergeCasesService } from './merge-cases.service';
 import { OpenMergeCaseDto } from './dto/open-merge-case.dto';
 import { ConfirmMergeCaseDto } from './dto/confirm-merge-case.dto';
@@ -29,8 +30,10 @@ export class MergeCasesController {
     return this.mergeCasesService.findById(id);
   }
 
-  @ApiOperation({ summary: 'Human-confirm two patients are duplicates and merge them (never automatic)' })
+  @ApiOperation({ summary: 'Human-confirm two patients are duplicates and merge them (never automatic) — requires patient.merge' })
   @Post(':id/confirm')
+  @UseGuards(PermissionGuard)
+  @RequirePermissions('patient.merge')
   confirm(@Param('id') id: string, @Body() dto: ConfirmMergeCaseDto, @ActorId() actorId: string) {
     return this.mergeCasesService.confirm(id, dto, actorId);
   }

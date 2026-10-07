@@ -1,0 +1,78 @@
+// Milestone 12 ("Analytics + AI"). The infra provisioning script also carved
+// out a separate ai_db, but it's deliberately left unused here — same
+// precedent as orders_db/emergency_db sitting unused elsewhere. This one
+// service owns both halves of the milestone (computed reporting snapshots,
+// and the controlled read-only "AI tool" facade) in analytics_db alone.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A persisted point-in-time computed report. Snapshots are never
+// recalculated in place — each POST /analytics/snapshots computes fresh
+// from the owning service's live data (over REST, never a cross-db query)
+// and inserts a new row, so the history of what the numbers looked like at
+// any past moment is always reconstructable.
+model AnalyticsSnapshot {
+  id          String    @id @default(uuid())
+  snapshotType String   // e.g. "inventory_levels"
+  facilityId  String?
+  computedAt  DateTime  @default(now())
+  data        Json
+
+  @@index([snapshotType, facilityId, computedAt])
+  @@map("analytics_snapshots")
+}
+
+// Audit log of every call made through the AI tool facade (ai/tools/*) —
+// one row per invocation, success or failure. Core rule this milestone
+// demonstrates: "AI uses controlled tools/domain services only — never
+// direct production DB mutation." Every tool here is a read proxied through
+// another service's real REST API; there is no write tool, so this table is
+// purely an audit trail of reads, never a record of a mutation.
+model AiToolInvocation {
+  id             String   @id @default(uuid())
+  toolName       String
+  inputPayload   Json
+  outputPayload  Json?
+  invokedBy      String // actorId
+  status         String   @default("succeeded") // succeeded | failed
+  invokedAt      DateTime @default(now())
+
+  @@index([toolName, invokedAt])
+  @@index([invokedBy, invokedAt])
+  @@map("ai_tool_invocations")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

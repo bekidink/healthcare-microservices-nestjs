@@ -8,6 +8,10 @@ export interface AccessTokenPayload {
   sub: string; // userId
   sid: string; // sessionId, for revocation checks
   activeOrganizationId?: string;
+  // Platform-wide flag, not a permission list (see User.isSuperAdmin in
+  // identity's schema for why this is a flag and not just another role).
+  // A super admin's permission resolution bypasses org-scoping entirely.
+  isSuperAdmin?: boolean;
   tokenVersion: number;
   iat: number;
   exp: number;

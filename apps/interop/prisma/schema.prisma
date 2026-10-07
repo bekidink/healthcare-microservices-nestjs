@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Interop makes no domain writes of its own — it only reads Patient/Clinical
+// over REST and translates the response into a FHIR R4-shaped JSON document.
+// Its only persisted state is this access log: who requested which FHIR
+// resource and when. Deliberately no AuditEvent/OutboxEvent/audit-outbox
+// machinery here — there is no domain state change to audit or publish,
+// unlike every other service in this monorepo.
+model InteropAccessLog {
+  id          String   @id @default(uuid())
+  resourceType String  // Patient | Encounter | Observation
+  resourceId  String
+  requestedBy String   // actorId (x-auth-user-id), or "system" if absent
+  requestedAt DateTime @default(now())
+
+  @@index([resourceType, resourceId, requestedAt])
+  @@map("interop_access_logs")
+}

@@ -14,6 +14,18 @@ model User {
   phone        String?   @unique
   passwordHash String?
   status       String    @default("active") // active | disabled | pending_verification
+  // Platform-wide, organization-independent — deliberately NOT a Role row.
+  // A super admin's authority doesn't come from any one organization's
+  // Membership, so modeling it as "just another role" would require either
+  // a Membership per organization (doesn't scale, isn't atomic) or a
+  // nullable Membership.organizationId (breaks the @@unique([userId,
+  // organizationId]) scoping every other role relies on). This flag bypasses
+  // org-scoped permission resolution entirely — see UsersService.resolvePermissions.
+  // There is deliberately no self-service endpoint that sets this; the only
+  // way to grant it today is a direct DB/Prisma Studio update by whoever
+  // operates the platform, which is the correct amount of friction for the
+  // most powerful flag in the system.
+  isSuperAdmin Boolean   @default(false)
   // Bumped on password change / forced logout-everywhere so previously
   // issued access tokens naturally fail their tokenVersion check.
   tokenVersion Int       @default(0)
@@ -82,14 +94,20 @@ model Membership {
 }
 
 model UserSession {
-  id               String    @id @default(uuid())
-  userId           String
-  refreshTokenHash String
-  userAgent        String?
-  ipAddress        String?
-  revokedAt        DateTime?
-  expiresAt        DateTime
-  createdAt        DateTime  @default(now())
+  id                   String    @id @default(uuid())
+  userId               String
+  refreshTokenHash     String
+  // The organization a multi-membership user selected at login (or via
+  // POST /auth/switch-organization) — persisted on the session itself so
+  // `refresh` can carry it forward into the new access token without the
+  // refresh token (which deliberately carries no claims beyond sub/sid)
+  // needing to know about it.
+  activeOrganizationId String?
+  userAgent            String?
+  ipAddress            String?
+  revokedAt            DateTime?
+  expiresAt            DateTime
+  createdAt            DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

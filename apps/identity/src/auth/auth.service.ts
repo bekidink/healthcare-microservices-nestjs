@@ -57,7 +57,13 @@ export class AuthService {
     return { id: user.id, email: user.email, status: user.status };
   }
 
-  async login(params: { email: string; password: string; userAgent?: string; ipAddress?: string }) {
+  async login(params: {
+    email: string;
+    password: string;
+    organizationId?: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }) {
     const user = await this.prisma.user.findUnique({ where: { email: params.email } });
     if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials.');
 
@@ -66,10 +72,43 @@ export class AuthService {
 
     if (user.status === 'disabled') throw new UnauthorizedException('This account is disabled.');
 
+    const activeOrganizationId = user.isSuperAdmin
+      ? undefined // a super admin isn't scoped to any one organization
+      : await this.resolveActiveOrganizationId(user.id, params.organizationId);
+
     return this.issueTokens(user.id, user.tokenVersion, {
       userAgent: params.userAgent,
       ipAddress: params.ipAddress,
+      activeOrganizationId,
+      isSuperAdmin: user.isSuperAdmin,
     });
+  }
+
+  /**
+   * Picks which organization a freshly-issued access token is scoped to.
+   * An explicit organizationId must match one of the user's own active
+   * memberships (never trust a client-supplied org blindly). With no
+   * explicit choice: auto-select if the user has exactly one active
+   * membership (the common case), otherwise leave it unset — a
+   * multi-membership user with no explicit choice gets a token with no
+   * resolvable permissions anywhere until they call
+   * POST /auth/switch-organization, which is the correct safe default
+   * (never silently guess which of several hospitals they meant).
+   */
+  private async resolveActiveOrganizationId(userId: string, requestedOrgId?: string): Promise<string | undefined> {
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    if (requestedOrgId) {
+      const match = memberships.find((m) => m.organizationId === requestedOrgId);
+      if (!match) {
+        throw new BadRequestException('You do not have an active membership in that organization.');
+      }
+      return match.organizationId;
+    }
+
+    return memberships.length === 1 ? memberships[0].organizationId : undefined;
   }
 
   async refresh(params: { refreshToken: string }) {
@@ -107,7 +146,61 @@ export class AuthService {
     return this.issueTokens(user.id, user.tokenVersion, {
       userAgent: session.userAgent ?? undefined,
       ipAddress: session.ipAddress ?? undefined,
+      // Carried forward from the session being rotated, not re-derived —
+      // re-running resolveActiveOrganizationId's "auto-pick if exactly one"
+      // logic here could silently change which org a refresh is scoped to
+      // if the user's memberships changed since login. Refreshing should
+      // never alter what the caller is currently acting as; only an
+      // explicit POST /auth/switch-organization call does that.
+      activeOrganizationId: session.activeOrganizationId ?? undefined,
+      isSuperAdmin: user.isSuperAdmin,
     });
+  }
+
+  /**
+   * Re-scopes the CURRENT session to a different organization the user is
+   * an active member of, and reissues just the access token — the refresh
+   * token/session identity itself doesn't change, only which org it's
+   * currently acting within. Lets a multi-hospital staff member (or anyone
+   * covering more than one organization) move between them without
+   * re-entering credentials.
+   */
+  async switchOrganization(params: { userId: string; sessionId: string; organizationId: string }) {
+    const session = await this.prisma.userSession.findUnique({ where: { id: params.sessionId } });
+    if (!session || session.userId !== params.userId || session.revokedAt) {
+      throw new UnauthorizedException('Session no longer valid.');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: params.userId } });
+    if (!user) throw new UnauthorizedException('User not found.');
+
+    if (!user.isSuperAdmin) {
+      const membership = await this.prisma.membership.findUnique({
+        where: { userId_organizationId: { userId: params.userId, organizationId: params.organizationId } },
+      });
+      if (!membership || membership.status !== 'active') {
+        throw new BadRequestException('You do not have an active membership in that organization.');
+      }
+    }
+
+    await this.prisma.userSession.update({
+      where: { id: session.id },
+      data: { activeOrganizationId: params.organizationId },
+    });
+
+    const now = Math.floor(Date.now() / 1000);
+    const accessPayload: AccessTokenPayload = {
+      sub: params.userId,
+      sid: session.id,
+      activeOrganizationId: params.organizationId,
+      isSuperAdmin: user.isSuperAdmin,
+      tokenVersion: user.tokenVersion,
+      iat: now,
+      exp: now + ACCESS_TTL_SECONDS,
+    };
+    const accessToken = await this.jwt.signAsync(accessPayload);
+
+    return { accessToken, expiresIn: ACCESS_TTL_SECONDS };
   }
 
   async logout(params: { sessionId: string }) {
@@ -164,7 +257,10 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found.');
 
     if (params.purpose === 'login' || params.purpose === 'mfa') {
-      return this.issueTokens(user.id, user.tokenVersion, {});
+      const activeOrganizationId = user.isSuperAdmin
+        ? undefined
+        : await this.resolveActiveOrganizationId(user.id);
+      return this.issueTokens(user.id, user.tokenVersion, { activeOrganizationId, isSuperAdmin: user.isSuperAdmin });
     }
 
     return { verified: true };
@@ -173,7 +269,12 @@ export class AuthService {
   private async issueTokens(
     userId: string,
     tokenVersion: number,
-    context: { userAgent?: string; ipAddress?: string }
+    context: {
+      userAgent?: string;
+      ipAddress?: string;
+      activeOrganizationId?: string;
+      isSuperAdmin?: boolean;
+    }
   ) {
     const sessionId = uuid();
     const now = Math.floor(Date.now() / 1000);
@@ -181,6 +282,8 @@ export class AuthService {
     const accessPayload: AccessTokenPayload = {
       sub: userId,
       sid: sessionId,
+      activeOrganizationId: context.activeOrganizationId,
+      isSuperAdmin: context.isSuperAdmin,
       tokenVersion,
       iat: now,
       exp: now + ACCESS_TTL_SECONDS,
@@ -202,6 +305,7 @@ export class AuthService {
         id: sessionId,
         userId,
         refreshTokenHash: hashToken(refreshToken),
+        activeOrganizationId: context.activeOrganizationId,
         userAgent: context.userAgent,
         ipAddress: context.ipAddress,
         expiresAt: new Date(Date.now() + REFRESH_TTL_SECONDS * 1000),

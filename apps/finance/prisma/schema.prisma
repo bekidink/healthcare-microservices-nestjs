@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// An invoice, created either from a Clinical encounterId (patientId/
+// facilityId derived from it over REST — see ClinicalClientService, never a
+// query against clinical_db) or, for a standalone invoice with no encounter,
+// from those fields directly. Mirrors Lab's own dual-path pattern for
+// starting a LabOrder from an Encounter.
+model Invoice {
+  id          String   @id @default(uuid())
+  encounterId String?
+  patientId   String
+  facilityId  String
+  status      String   @default("open") // open | paid | void
+  totalAmount Float
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  items    InvoiceLineItem[]
+  payments Payment[]
+
+  @@index([patientId])
+  @@index([facilityId, status])
+  @@map("invoices")
+}
+
+// One billable line on an invoice (a consult fee, a lab test, a pharmacy
+// dispense) — referenceType/referenceId optionally point back at the
+// originating resource in another service (e.g. "LabOrder" / <id>), purely
+// for traceability, never a foreign key.
+model InvoiceLineItem {
+  id            String  @id @default(uuid())
+  invoiceId     String
+  description   String
+  amount        Float
+  referenceType String?
+  referenceId   String?
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+// Core rule: "payment callbacks must be verified and idempotent." externalReference
+// is unique so a gateway webhook delivered more than once (at-least-once
+// delivery is the norm for webhooks) can never create a second Payment row —
+// see PaymentsService.handleCallback for the full idempotency write-up.
+model Payment {
+  id                String    @id @default(uuid())
+  invoiceId         String
+  amount            Float
+  method            String // cash | card | insurance | mobile_money
+  status            String    @default("completed") // pending | completed | failed
+  externalReference String?   @unique
+  processedAt       DateTime  @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

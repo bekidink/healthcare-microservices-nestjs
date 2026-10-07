@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PermissionGuard, RequirePermissions } from '@healthcare/shared';
 import { FacilitiesService } from './facilities.service';
 import { CreateFacilityDto } from './dto/create-facility.dto';
 import { UpdateFacilityConfigurationDto } from './dto/update-configuration.dto';
@@ -11,8 +12,10 @@ import { ActorId } from '../common/actor.decorator';
 export class FacilitiesController {
   constructor(private readonly facilitiesService: FacilitiesService) {}
 
-  @ApiOperation({ summary: 'Create a facility under an organization' })
+  @ApiOperation({ summary: 'Create a facility under an organization — requires organization.manage' })
   @Post('organizations/:organizationId/facilities')
+  @UseGuards(PermissionGuard)
+  @RequirePermissions('organization.manage')
   create(
     @Param('organizationId') organizationId: string,
     @Body() dto: CreateFacilityDto,
