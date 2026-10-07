@@ -31,6 +31,7 @@ const ANALYTICS_URL = process.env.ANALYTICS_SERVICE_URL || 'http://localhost:301
 const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/auth', target: IDENTITY_URL, downstreamPrefix: '/auth' },
   { prefix: '/api/v1/users', target: IDENTITY_URL, downstreamPrefix: '/users' },
+  { prefix: '/api/v1/memberships', target: IDENTITY_URL, downstreamPrefix: '/memberships' },
   { prefix: '/api/v1/organizations', target: FACILITY_URL, downstreamPrefix: '/organizations' },
   { prefix: '/api/v1/facilities', target: FACILITY_URL, downstreamPrefix: '/facilities' },
   { prefix: '/api/v1/departments', target: FACILITY_URL, downstreamPrefix: '/departments' },
