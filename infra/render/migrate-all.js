@@ -20,6 +20,9 @@ const SERVICES = {
   facility: 'facility_db',
   patient: 'patient_db',
   scheduling: 'scheduling_db',
+  clinical: 'clinical_db',
+  lab: 'lab_db',
+  pharmacy: 'pharmacy_db',
 };
 
 function sleep(ms) {

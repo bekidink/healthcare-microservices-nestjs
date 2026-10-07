@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// The clinical visit record. Created explicitly via POST /encounters, either
+// from a Scheduling appointmentId (patientId/providerId/facilityId/
+// departmentId are then derived from that appointment over REST — see
+// SchedulingClientService, never a cross-database join) or, for a walk-in
+// with no prior appointment, from patientId/providerId/facilityId supplied
+// directly. Deliberately not auto-created by consuming Scheduling's Kafka
+// events — every cross-service reference in this codebase so far is an
+// explicit synchronous call, and this stays consistent with that (it also
+// means Encounter creation keeps working even where Kafka doesn't exist,
+// e.g. the free Render deploy).
+model Encounter {
+  id              String    @id @default(uuid())
+  appointmentId   String?   @unique
+  patientId       String
+  providerId      String
+  facilityId      String
+  departmentId    String?
+  encounterType   String // outpatient_visit | inpatient_admission | emergency_visit | telemedicine
+  status          String    @default("in_progress") // in_progress | completed | cancelled
+  chiefComplaint  String?
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+
+  vitals     VitalSigns[]
+  notes      ClinicalNote[]
+  diagnoses  Diagnosis[]
+
+  @@index([patientId])
+  @@index([providerId])
+  @@index([facilityId, status])
+  @@map("encounters")
+}
+
+model VitalSigns {
+  id                      String   @id @default(uuid())
+  encounterId             String
+  temperatureC            Float?
+  heartRateBpm            Int?
+  respiratoryRateBpm      Int?
+  bloodPressureSystolic   Int?
+  bloodPressureDiastolic  Int?
+  spo2Percent             Int?
+  weightKg                Float?
+  heightCm                Float?
+  recordedBy              String
+  recordedAt              DateTime @default(now())
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([encounterId])
+  @@map("vital_signs")
+}
+
+// Core rule: "never overwrite signed clinical records". A note is editable
+// (PATCH /notes/:id) only while signedAt is null; POST /notes/:id/sign sets
+// signedAt (and signedBy) once, and every service method that would mutate
+// a note checks that flag first — see ClinicalNotesService.assertEditable.
+// There is deliberately no "unsign" or force-edit path.
+model ClinicalNote {
+  id          String    @id @default(uuid())
+  encounterId String
+  noteType    String    @default("soap") // soap | progress | discharge
+  subjective  String?
+  objective   String?
+  assessment  String?
+  plan        String?
+  authorId    String
+  signedBy    String?
+  signedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([encounterId])
+  @@map("clinical_notes")
+}
+
+// Per-encounter diagnosis (what was diagnosed THIS visit) — distinct from
+// ProblemListEntry, which is the patient's standing/longitudinal problem
+// list across every encounter.
+model Diagnosis {
+  id          String   @id @default(uuid())
+  encounterId String
+  code        String // ICD-10
+  description String
+  type        String   @default("secondary") // primary | secondary
+  recordedAt  DateTime @default(now())
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([encounterId])
+  @@map("diagnoses")
+}
+
+// Patient-level, cross-encounter continuity-of-care list. Not tied to any
+// single Encounter — a chronic condition noted in one visit should still
+// show up in the next, at a different facility even.
+model ProblemListEntry {
+  id          String    @id @default(uuid())
+  patientId   String
+  code        String?
+  description String
+  status      String    @default("active") // active | chronic | resolved
+  onsetDate   DateTime? @db.Date
+  resolvedAt  DateTime?
+  recordedAt  DateTime  @default(now())
+
+  @@index([patientId, status])
+  @@map("problem_list_entries")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

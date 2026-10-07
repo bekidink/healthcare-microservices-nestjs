@@ -85,12 +85,18 @@ services:
       FACILITY_SERVICE_URL: http://facility:3002
       PATIENT_SERVICE_URL: http://patient:3003
       SCHEDULING_SERVICE_URL: http://scheduling:3004
+      CLINICAL_SERVICE_URL: http://clinical:3005
+      LAB_SERVICE_URL: http://lab:3006
+      PHARMACY_SERVICE_URL: http://pharmacy:3007
       JWT_ACCESS_SECRET: dev-access-secret-change-me
     depends_on:
       - identity
       - facility
       - patient
       - scheduling
+      - clinical
+      - lab
+      - pharmacy
 
   identity:
     build:
@@ -171,6 +177,69 @@ services:
       kafka:
         condition: service_healthy
       facility:
+        condition: service_started
+
+  clinical:
+    build:
+      context: .
+      dockerfile: apps/clinical/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      PORT: 3005
+      DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/clinical_db?schema=public
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: clinical-service
+      SCHEDULING_SERVICE_URL: http://scheduling:3004
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      scheduling:
+        condition: service_started
+
+  lab:
+    build:
+      context: .
+      dockerfile: apps/lab/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    environment:
+      PORT: 3006
+      DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/lab_db?schema=public
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: lab-service
+      CLINICAL_SERVICE_URL: http://clinical:3005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      clinical:
+        condition: service_started
+
+  pharmacy:
+    build:
+      context: .
+      dockerfile: apps/pharmacy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    environment:
+      PORT: 3007
+      DATABASE_URL: postgresql://healthcare:healthcare@postgres:5432/pharmacy_db?schema=public
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: pharmacy-service
+      CLINICAL_SERVICE_URL: http://clinical:3005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      clinical:
         condition: service_started
 
 volumes:

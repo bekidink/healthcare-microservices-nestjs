@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A lab order, created either from a Clinical encounterId (patientId/
+// providerId/facilityId derived from it over REST — see
+// ClinicalClientService, never a query against clinical_db) or, for a
+// standalone order with no encounter, from those fields directly. Mirrors
+// Clinical's own dual-path pattern for starting an Encounter from an
+// Appointment.
+model LabOrder {
+  id           String   @id @default(uuid())
+  encounterId  String?
+  patientId    String
+  providerId   String
+  facilityId   String
+  priority     String   @default("routine") // routine | urgent | stat
+  status       String   @default("ordered") // ordered | in_progress | completed | cancelled
+  notes        String?
+  orderedAt    DateTime @default(now())
+
+  items     LabOrderItem[]
+  specimens Specimen[]
+
+  @@index([patientId])
+  @@index([facilityId, status])
+  @@map("lab_orders")
+}
+
+// One ordered test within a panel (a CBC order might have one item; a
+// metabolic panel order might have eight) — each progresses independently
+// since results don't all come back from the analyzer at once.
+model LabOrderItem {
+  id         String   @id @default(uuid())
+  labOrderId String
+  testCode   String // LOINC code
+  testName   String
+  status     String   @default("ordered") // ordered | specimen_collected | resulted | cancelled
+
+  labOrder LabOrder    @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  results  LabResult[]
+
+  @@index([labOrderId])
+  @@map("lab_order_items")
+}
+
+// One physical specimen can cover multiple LabOrderItems (one blood draw
+// serves a CBC + a glucose test), so this belongs to the LabOrder as a
+// whole, not to a single item.
+model Specimen {
+  id             String    @id @default(uuid())
+  labOrderId     String
+  specimenType   String // blood | urine | swab | other
+  status         String    @default("pending_collection") // pending_collection | collected | received | rejected
+  collectedBy    String?
+  collectedAt    DateTime?
+  rejectedReason String?
+
+  labOrder LabOrder @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+
+  @@index([labOrderId])
+  @@map("specimens")
+}
+
+// Core rule: "never overwrite a corrected lab result." A result's value is
+// fixed the moment it's created — there is no update endpoint at all.
+// Entering a correction (POST /results/:id/correct) instead INSERTS a new
+// LabResult row with correctsResultId pointing at the old one, and flips the
+// old row's status to "corrected" — it is never deleted or edited in place,
+// so the full history (what was reported, when, and what superseded it) is
+// always reconstructable. See LabResultsService.correct.
+model LabResult {
+  id              String    @id @default(uuid())
+  labOrderItemId  String
+  value           String
+  unit            String?
+  referenceRange  String?
+  abnormalFlag    String    @default("normal") // normal | low | high | critical
+  status          String    @default("final") // preliminary | final | corrected
+  resultedBy      String
+  resultedAt      DateTime  @default(now())
+  correctsResultId String?  @unique
+
+  labOrderItem   LabOrderItem @relation(fields: [labOrderItemId], references: [id], onDelete: Cascade)
+  correctsResult LabResult?   @relation("ResultCorrection", fields: [correctsResultId], references: [id])
+  correctedBy    LabResult?   @relation("ResultCorrection")
+
+  @@index([labOrderItemId])
+  @@map("lab_results")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

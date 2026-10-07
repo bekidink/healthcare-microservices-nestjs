@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A prescription, created either from a Clinical encounterId (patientId/
+// providerId/facilityId derived from it over REST — see
+// ClinicalClientService, never a query against clinical_db) or, for a
+// standalone prescription with no encounter, from those fields directly.
+// Mirrors Lab's LabOrder and Clinical's Encounter dual-path pattern exactly.
+model Prescription {
+  id          String   @id @default(uuid())
+  encounterId String?
+  patientId   String
+  providerId  String
+  facilityId  String
+  status      String   @default("active") // active | dispensed | cancelled
+  notes       String?
+  prescribedAt DateTime @default(now())
+
+  items PrescriptionItem[]
+
+  @@index([patientId])
+  @@index([facilityId, status])
+  @@map("prescriptions")
+}
+
+// One medication line within a prescription — a prescription for a chronic
+// condition commonly covers several medications at once.
+model PrescriptionItem {
+  id                 String @id @default(uuid())
+  prescriptionId     String
+  medicationCode     String // RxNorm code
+  medicationName     String
+  dosage             String // e.g. "500mg"
+  frequency          String // e.g. "twice daily"
+  durationDays       Int?
+  quantityPrescribed Int
+  status             String @default("prescribed") // prescribed | dispensed | cancelled
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  dispense     Dispense?
+
+  @@index([prescriptionId])
+  @@map("prescription_items")
+}
+
+// A facility's stock catalog entry for one medication. Core rule: "Pharmacy
+// stock changes must create ledger movements" — quantityOnHand is never
+// updated on its own; every write path that touches it (receiveStock,
+// adjustStock, and Dispense) creates a StockLedgerEntry in the SAME
+// transaction as the only way it ever changes. There is deliberately no
+// direct "set quantity" endpoint.
+model InventoryItem {
+  id             String @id @default(uuid())
+  facilityId     String
+  medicationCode String
+  medicationName String
+  quantityOnHand Int    @default(0)
+  reorderLevel   Int    @default(0)
+
+  ledgerEntries StockLedgerEntry[]
+  dispenses     Dispense[]
+
+  @@unique([facilityId, medicationCode])
+  @@index([facilityId])
+  @@map("inventory_items")
+}
+
+// Append-only — never updated or deleted once written. balanceAfter is
+// recorded at write time (not recomputed later) so the ledger reads as a
+// true audit trail even if InventoryItem.quantityOnHand is ever
+// investigated for drift.
+model StockLedgerEntry {
+  id              String   @id @default(uuid())
+  inventoryItemId String
+  movementType    String // receipt | dispense | adjustment | waste
+  quantityDelta   Int // positive for receipt/adjustment-up, negative for dispense/waste
+  balanceAfter    Int
+  referenceType   String? // e.g. "PrescriptionItem"
+  referenceId     String?
+  performedBy     String
+  notes           String?
+  performedAt     DateTime @default(now())
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId, performedAt])
+  @@map("stock_ledger_entries")
+}
+
+// The act of fulfilling a PrescriptionItem from a facility's InventoryItem.
+// Creating one is what triggers the StockLedgerEntry + InventoryItem
+// decrement, atomically, in DispenseService.create.
+model Dispense {
+  id                 String   @id @default(uuid())
+  prescriptionItemId String   @unique
+  inventoryItemId    String
+  quantityDispensed  Int
+  dispensedBy        String
+  dispensedAt        DateTime @default(now())
+
+  prescriptionItem PrescriptionItem @relation(fields: [prescriptionItemId], references: [id], onDelete: Cascade)
+  inventoryItem    InventoryItem    @relation(fields: [inventoryItemId], references: [id])
+
+  @@index([inventoryItemId])
+  @@map("dispenses")
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  contextId    String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([contextId, resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}

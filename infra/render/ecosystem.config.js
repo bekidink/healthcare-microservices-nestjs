@@ -1,4 +1,4 @@
-// pm2-runtime process list for the single free Render web service: all 5
+// pm2-runtime process list for the single free Render web service: all 8
 // backend processes run inside one container so none of them need to be a
 // (paid-only) Render private service. Only `gateway` binds Render's public
 // $PORT; the rest listen on fixed ports reachable over localhost within
@@ -21,6 +21,9 @@ module.exports = {
         FACILITY_SERVICE_URL: 'http://localhost:3002',
         PATIENT_SERVICE_URL: 'http://localhost:3003',
         SCHEDULING_SERVICE_URL: 'http://localhost:3004',
+        CLINICAL_SERVICE_URL: 'http://localhost:3005',
+        LAB_SERVICE_URL: 'http://localhost:3006',
+        PHARMACY_SERVICE_URL: 'http://localhost:3007',
         JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
         CORS_ORIGINS: process.env.CORS_ORIGINS || '*',
       },
@@ -67,6 +70,39 @@ module.exports = {
         DATABASE_URL: withDb(baseDatabaseUrl, 'scheduling_db'),
         KAFKA_CLIENT_ID: 'scheduling-service',
         FACILITY_SERVICE_URL: 'http://localhost:3002',
+      },
+    },
+    {
+      name: 'clinical',
+      cwd: appDir('clinical'),
+      script: 'dist/main.js',
+      env: {
+        PORT: '3005',
+        DATABASE_URL: withDb(baseDatabaseUrl, 'clinical_db'),
+        KAFKA_CLIENT_ID: 'clinical-service',
+        SCHEDULING_SERVICE_URL: 'http://localhost:3004',
+      },
+    },
+    {
+      name: 'lab',
+      cwd: appDir('lab'),
+      script: 'dist/main.js',
+      env: {
+        PORT: '3006',
+        DATABASE_URL: withDb(baseDatabaseUrl, 'lab_db'),
+        KAFKA_CLIENT_ID: 'lab-service',
+        CLINICAL_SERVICE_URL: 'http://localhost:3005',
+      },
+    },
+    {
+      name: 'pharmacy',
+      cwd: appDir('pharmacy'),
+      script: 'dist/main.js',
+      env: {
+        PORT: '3007',
+        DATABASE_URL: withDb(baseDatabaseUrl, 'pharmacy_db'),
+        KAFKA_CLIENT_ID: 'pharmacy-service',
+        CLINICAL_SERVICE_URL: 'http://localhost:3005',
       },
     },
   ],

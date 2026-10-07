@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Healthcare Management Ecosystem — Client Test Guide</title>
+<style>
+  @page { margin: 22mm 18mm 20mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+    color: #1f2430;
+    line-height: 1.5;
+    font-size: 11.5pt;
+    margin: 0;
+  }
+  h1 { font-size: 22pt; margin: 0 0 4px 0; color: #0f172a; }
+  .subtitle { color: #52606d; font-size: 12pt; margin-bottom: 18px; }
+  h2 {
+    font-size: 14.5pt;
+    color: #ffffff;
+    background: #1d4ed8;
+    padding: 7px 12px;
+    border-radius: 4px;
+    margin-top: 26px;
+    margin-bottom: 10px;
+    page-break-after: avoid;
+  }
+  h2 .step-no { opacity: .8; font-weight: 600; margin-right: 8px; }
+  h3 { font-size: 11.5pt; margin: 14px 0 4px 0; color: #0f172a; }
+  .cover {
+    border: 2px solid #1d4ed8;
+    border-radius: 8px;
+    padding: 22px 26px;
+    margin-bottom: 22px;
+    background: #f4f7ff;
+  }
+  .cover table { width: 100%; margin-top: 10px; font-size: 10.5pt; }
+  .cover td { padding: 3px 0; }
+  .cover td.label { color: #52606d; width: 140px; }
+  .scenario {
+    border: 1px solid #dbe2ea;
+    border-left: 4px solid #1d4ed8;
+    border-radius: 6px;
+    padding: 4px 16px 14px 16px;
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+  .goal { font-style: italic; color: #334155; margin: 6px 0 10px 0; }
+  ol.steps { margin: 6px 0 10px 0; padding-left: 22px; }
+  ol.steps li { margin-bottom: 6px; }
+  code, .field {
+    font-family: "Consolas", "Courier New", monospace;
+    background: #eef1f6;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10.3pt;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 9.7pt;
+    overflow-x: auto;
+    margin: 6px 0 10px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .expect {
+    background: #ecfdf3;
+    border: 1px solid #b7e4c7;
+    border-radius: 5px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    font-size: 10.5pt;
+  }
+  .expect .tag { font-weight: 700; color: #067a46; }
+  .note {
+    background: #fff8e6;
+    border: 1px solid #f2d98a;
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-size: 10.3pt;
+    margin: 10px 0;
+  }
+  .note .tag { font-weight: 700; color: #9a6a00; }
+  a { color: #1d4ed8; }
+  table.checklist {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 10.5pt;
+  }
+  table.checklist th, table.checklist td {
+    border: 1px solid #cbd5e1;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  table.checklist th { background: #f1f5f9; }
+  table.checklist td.box { width: 60px; text-align: center; font-size: 13pt; }
+  .footer-note { font-size: 9.5pt; color: #64748b; margin-top: 24px; border-top: 1px solid #dbe2ea; padding-top: 10px; }
+  .badge {
+    display: inline-block;
+    background: #1d4ed8;
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 7px;
+    font-size: 9.5pt;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .toc { margin: 4px 0 0 0; padding-left: 20px; font-size: 10.5pt; }
+  .toc li { margin-bottom: 3px; }
+</style>
+</head>
+<body>
+
+<h1>Healthcare Management Ecosystem</h1>
+<div class="subtitle">Client Test Guide — deployed environment walkthrough</div>
+
+<div class="cover">
+  <strong>Purpose.</strong> This guide walks through a full, realistic use of the
+  system as deployed today: creating an account, setting up a hospital's
+  structure, registering a patient, and taking one appointment all the way
+  from booking through completion. No technical setup is required — every
+  step is done in a web browser.
+  <table>
+    <tr><td class="label">Environment</td><td>Live deployment (Render, free tier)</td></tr>
+    <tr><td class="label">Base URL</td><td><code>https://healthcare-app-vtwa.onrender.com</code></td></tr>
+    <tr><td class="label">What you need</td><td>A web browser. Nothing else to install.</td></tr>
+    <tr><td class="label">Estimated time</td><td>20–30 minutes</td></tr>
+  </table>
+  <p style="margin-bottom:0; margin-top:10px;">
+  <strong>Contents:</strong></p>
+  <ol class="toc">
+    <li>Before you start — the four test consoles</li>
+    <li>Create an account and sign in</li>
+    <li>Set up the hospital structure</li>
+    <li>Add a doctor and their weekly schedule</li>
+    <li>Register a patient</li>
+    <li>Generate bookable appointment slots</li>
+    <li>Book an appointment</li>
+    <li>Walk the appointment through check-in and completion</li>
+    <li>Optional: duplicate-patient detection</li>
+    <li>Result checklist</li>
+    <li>What to expect / known limitations</li>
+  </ol>
+</div>
+
+<h2><span class="step-no">1.</span>Before you start — the four test consoles</h2>
+<p>Every step below is done through one of these four pages. Each is a live,
+interactive form: you fill in a box, click a button, and see the real
+response. Open all four in separate browser tabs now:</p>
+<table class="checklist">
+  <tr><th>Console</th><th>Link</th><th>Used for</th></tr>
+  <tr><td>Identity</td><td><code>/docs/identity</code></td><td>Creating your account, signing in</td></tr>
+  <tr><td>Facility</td><td><code>/docs/facility</code></td><td>Hospital, departments, doctor schedules</td></tr>
+  <tr><td>Patient</td><td><code>/docs/patient</code></td><td>Registering patients</td></tr>
+  <tr><td>Scheduling</td><td><code>/docs/scheduling</code></td><td>Appointment slots, booking, queue</td></tr>
+</table>
+<p>(Full addresses: prefix each with <code>https://healthcare-app-vtwa.onrender.com</code>.)</p>
+<div class="note"><span class="tag">Tip:</span> On each page, click any endpoint to expand it, then click the
+<strong>"Try it out"</strong> button, edit the example JSON in the box, and click
+<strong>"Execute"</strong>. The response appears right below, with its status code.</div>
+
+<h2><span class="step-no">2.</span>Create an account and sign in</h2>
+<div class="scenario">
+  <div class="goal">Goal: confirm you can register a user and log in.</div>
+  <h3>2a. Register</h3>
+  <p>On the <strong>Identity</strong> console, open <span class="badge">POST</span><code>/auth/register</code>.</p>
+  <pre>{
+  "email": "your.name@example.com",
+  "password": "Password123!",
+  "fullName": "Your Name"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> status <strong>201</strong>, with a response containing an
+  <code>id</code> and <code>"status": "pending_verification"</code>.</div>
+
+  <h3>2b. Sign in</h3>
+  <p>Open <span class="badge">POST</span><code>/auth/login</code> with the same email/password.</p>
+  <div class="expect"><span class="tag">Expect:</span> status <strong>201</strong>, with an <code>accessToken</code>,
+  <code>refreshToken</code>, and <code>expiresIn</code>. You won't need to use the token
+  for the rest of this guide — every action below works without it on this
+  test deployment (see section 11).</div>
+</div>
+
+<h2><span class="step-no">3.</span>Set up the hospital structure</h2>
+<div class="scenario">
+  <div class="goal">Goal: create an organization, one facility under it, and one department.</div>
+
+  <h3>3a. Create the organization</h3>
+  <p>On the <strong>Facility</strong> console: <span class="badge">POST</span><code>/organizations</code></p>
+  <pre>{
+  "legalName": "Black Lion General Hospital PLC",
+  "displayName": "Black Lion Hospital",
+  "type": "hospital"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201, with an <code>id</code> — copy it, you'll need it next.
+  (Valid <code>type</code> values: <code>healthcare_network</code>, <code>hospital</code>,
+  <code>clinic</code>, <code>pharmacy_chain</code>, <code>diagnostic_center</code>.)</div>
+
+  <h3>3b. Create a facility under it</h3>
+  <p><span class="badge">POST</span><code>/organizations/{organizationId}/facilities</code> — paste the organization's
+  <code>id</code> into the <code>organizationId</code> field on the page.</p>
+  <pre>{
+  "name": "Black Lion Hospital - Main Campus",
+  "type": "hospital"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201, with a facility <code>id</code>. Copy it too.</div>
+
+  <h3>3c. Create a department</h3>
+  <p><span class="badge">POST</span><code>/facilities/{facilityId}/departments</code></p>
+  <pre>{
+  "name": "Internal Medicine",
+  "type": "outpatient"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201, with a department <code>id</code>. Copy it — you'll use it
+  repeatedly from here on.</div>
+</div>
+
+<h2><span class="step-no">4.</span>Add a doctor and their weekly schedule</h2>
+<div class="scenario">
+  <div class="goal">Goal: assign the user you registered in step 2 as a doctor, and give them
+  working hours.</div>
+  <p>Go back to your <strong>Identity</strong> registration response from step 2a and
+  copy that user's <code>id</code> — that's the doctor's id for everything below.</p>
+
+  <h3>4a. Assign the doctor to the department</h3>
+  <p><span class="badge">POST</span><code>/departments/{id}/providers</code> (use the department id from 3c)</p>
+  <pre>{
+  "providerId": "&lt;the user id from step 2a&gt;",
+  "roleTitle": "Attending Physician"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201.</div>
+
+  <h3>4b. Give them a weekly schedule</h3>
+  <p><span class="badge">POST</span><code>/departments/{id}/schedules</code></p>
+  <pre>{
+  "providerId": "&lt;the user id from step 2a&gt;",
+  "dayOfWeek": 2,
+  "startTime": "08:00",
+  "endTime": "16:00"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201. <code>dayOfWeek</code> is a number, 0 = Sunday through
+  6 = Saturday (2 = Tuesday). Times are 24-hour <code>HH:mm</code>. This creates a
+  <em>recurring</em> weekly template — no bookable appointment exists yet;
+  that's step 6.</div>
+</div>
+
+<h2><span class="step-no">5.</span>Register a patient</h2>
+<div class="scenario">
+  <div class="goal">Goal: register a patient who will book the appointment.</div>
+  <p>On the <strong>Patient</strong> console: <span class="badge">POST</span><code>/patients</code></p>
+  <pre>{
+  "firstName": "Sara",
+  "lastName": "Tesfaye",
+  "dateOfBirth": "1990-05-14",
+  "gender": "female",
+  "nationalId": "ETH-99991234"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201, with a patient <code>id</code> and
+  <code>"possibleDuplicates": []</code> (empty, since this is a new person). Copy
+  the patient <code>id</code>.</div>
+</div>
+
+<h2><span class="step-no">6.</span>Generate bookable appointment slots</h2>
+<div class="scenario">
+  <div class="goal">Goal: turn the doctor's weekly schedule from step 4b into real, dated
+  appointment slots someone can actually book.</div>
+  <p>On the <strong>Scheduling</strong> console, first create an appointment type:
+  <span class="badge">POST</span><code>/appointment-types</code></p>
+  <pre>{
+  "facilityId": "&lt;facility id from step 3b&gt;",
+  "name": "General Consultation",
+  "code": "GEN_CONSULT",
+  "defaultDurationMins": 30
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201, with an appointment-type <code>id</code>.</div>
+
+  <h3>6a. Generate the slots</h3>
+  <p><span class="badge">POST</span><code>/schedule-slots/generate</code></p>
+  <pre>{
+  "departmentId": "&lt;department id from step 3c&gt;",
+  "providerId": "&lt;doctor's user id from step 2a&gt;",
+  "dateFrom": "&lt;an upcoming Monday's date, e.g. 2026-11-02&gt;",
+  "dateTo": "&lt;7 days later&gt;",
+  "slotDurationMins": 30
+}</pre>
+  <div class="note"><span class="tag">Important:</span> the date range you choose must include at least one
+  actual Tuesday (since step 4b set <code>dayOfWeek: 2</code>), or nothing will be
+  generated. Pick any real week that contains a Tuesday.</div>
+  <div class="expect"><span class="tag">Expect:</span> 201, with <code>"createdCount"</code> greater than 0 (16 slots
+  for an 08:00–16:00 day in 30-minute blocks) and a list of the created
+  slots.</div>
+
+  <h3>6b. Confirm the slots are listed as open</h3>
+  <p><span class="badge">GET</span><code>/schedule-slots?providerId=&lt;doctor id&gt;&amp;status=open</code></p>
+  <div class="expect"><span class="tag">Expect:</span> 200, a list of open slots. Copy the <code>id</code> of the
+  first one.</div>
+</div>
+
+<h2><span class="step-no">7.</span>Book an appointment</h2>
+<div class="scenario">
+  <div class="goal">Goal: book the patient from step 5 into the slot from step 6b.</div>
+  <p><span class="badge">POST</span><code>/appointments</code></p>
+  <pre>{
+  "patientId": "&lt;patient id from step 5&gt;",
+  "slotId": "&lt;slot id from step 6b&gt;",
+  "appointmentTypeId": "&lt;appointment-type id from step 6&gt;",
+  "reason": "Routine checkup"
+}</pre>
+  <div class="expect"><span class="tag">Expect:</span> 201, with the new appointment's <code>id</code> and
+  <code>"status": "requested"</code>. Copy the appointment <code>id</code> — you'll use it
+  for every remaining step. If you re-run this exact request a second time
+  with the same slot, it correctly fails (the slot is no longer open) — that
+  double-booking protection is expected behavior, worth trying once.</div>
+</div>
+
+<h2><span class="step-no">8.</span>Walk the appointment through check-in and completion</h2>
+<div class="scenario">
+  <div class="goal">Goal: move the appointment through its full real-world lifecycle and see
+  the patient appear on, then clear from, the department's live queue.</div>
+  <ol class="steps">
+    <li><span class="badge">POST</span><code>/appointments/{id}/confirm</code> — expect 201, status becomes
+    <code>confirmed</code>.</li>
+    <li><span class="badge">POST</span><code>/appointments/{id}/check-in</code> — expect 201, status becomes
+    <code>checked_in</code>. This also puts the patient on the department's queue.</li>
+    <li>On the <strong>Scheduling</strong> console: <span class="badge">GET</span>
+    <code>/queue?facilityId=&lt;facility id&gt;&amp;departmentId=&lt;department id&gt;</code> —
+    expect one entry, <code>"status": "waiting"</code>, <code>"queueNumber": 1</code>.
+    Copy that queue entry's <code>id</code>.</li>
+    <li><span class="badge">POST</span><code>/queue/{id}/call</code> — announces the patient's number;
+    status becomes <code>called</code>.</li>
+    <li><span class="badge">POST</span><code>/appointments/{id}/start</code> — status becomes
+    <code>in_service</code>.</li>
+    <li><span class="badge">POST</span><code>/appointments/{id}/complete</code> — status becomes
+    <code>completed</code>.</li>
+    <li>Repeat the queue lookup from step 3 above — expect an <strong>empty
+    list</strong> now, since completed visits drop off the active queue.</li>
+  </ol>
+  <div class="note"><span class="tag">Worth trying:</span> call <code>/confirm</code> a second time on the now-completed
+  appointment. It should correctly fail — the system won't let an appointment
+  go backwards or repeat a step once it's finished.</div>
+</div>
+
+<h2><span class="step-no">9.</span>Optional: duplicate-patient detection</h2>
+<div class="scenario">
+  <div class="goal">Goal: see how the system flags — but never silently merges — a possible
+  duplicate patient.</div>
+  <p>Repeat step 5 exactly, using the <em>same</em> <code>nationalId</code> ("ETH-99991234")
+  but any other name.</p>
+  <div class="expect"><span class="tag">Expect:</span> 201 — a new patient record is still created (it never
+  blocks registration) — but this time <code>"possibleDuplicates"</code> is not
+  empty, showing a high-confidence match against the first patient. Merging
+  two records always requires a separate, explicit human decision (a
+  <code>/merge-cases/.../confirm</code> call) — it never happens automatically.</div>
+</div>
+
+<h2><span class="step-no">10.</span>Result checklist</h2>
+<table class="checklist">
+  <tr><th>Step</th><th>Pass</th><th>Fail</th><th>Notes</th></tr>
+  <tr><td>2. Register &amp; log in</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+  <tr><td>3. Hospital structure created</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+  <tr><td>4. Doctor + schedule added</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+  <tr><td>5. Patient registered</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+  <tr><td>6. Slots generated</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+  <tr><td>7. Appointment booked</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+  <tr><td>8. Full lifecycle + queue</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+  <tr><td>9. Duplicate detection (optional)</td><td class="box">&#9633;</td><td class="box">&#9633;</td><td></td></tr>
+</table>
+
+<h2><span class="step-no">11.</span>What to expect / known limitations</h2>
+<div class="note">
+<span class="tag">This is a free-tier test deployment, not production infrastructure:</span>
+<ul style="margin:6px 0 0 18px; padding:0;">
+  <li>If the site has been idle for a while, the <em>first</em> request can take
+  15–30 seconds while it wakes back up. This is normal — just wait and retry.</li>
+  <li>Login tokens are not currently required to perform actions in this test
+  environment — every step above will work whether or not you're signed in.
+  This is a known, intentional gap for this stage of testing, not a bug.</li>
+  <li>There's no messaging/notification delivery on this deployment (no SMS or
+  email will actually go out) — reminders and events are recorded internally
+  only.</li>
+</ul>
+</div>
+
+<div class="footer-note">
+Healthcare Management Ecosystem — client test guide. Generated for the
+deployment at <code>https://healthcare-app-vtwa.onrender.com</code>. Questions or
+issues found while testing should be reported back with the step number,
+the request you sent, and the exact response you received.
+</div>
+
+</body>
+</html>

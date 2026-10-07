@@ -18,6 +18,9 @@ const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL || 'http://localhost:3001'
 const FACILITY_URL = process.env.FACILITY_SERVICE_URL || 'http://localhost:3002';
 const PATIENT_URL = process.env.PATIENT_SERVICE_URL || 'http://localhost:3003';
 const SCHEDULING_URL = process.env.SCHEDULING_SERVICE_URL || 'http://localhost:3004';
+const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || 'http://localhost:3005';
+const LAB_URL = process.env.LAB_SERVICE_URL || 'http://localhost:3006';
+const PHARMACY_URL = process.env.PHARMACY_SERVICE_URL || 'http://localhost:3007';
 
 const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/auth', target: IDENTITY_URL, downstreamPrefix: '/auth' },
@@ -32,6 +35,16 @@ const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/api/v1/appointments', target: SCHEDULING_URL, downstreamPrefix: '/appointments' },
   { prefix: '/api/v1/queue', target: SCHEDULING_URL, downstreamPrefix: '/queue' },
   { prefix: '/api/v1/reminders', target: SCHEDULING_URL, downstreamPrefix: '/reminders' },
+  { prefix: '/api/v1/encounters', target: CLINICAL_URL, downstreamPrefix: '/encounters' },
+  { prefix: '/api/v1/notes', target: CLINICAL_URL, downstreamPrefix: '/notes' },
+  { prefix: '/api/v1/problems', target: CLINICAL_URL, downstreamPrefix: '/problems' },
+  { prefix: '/api/v1/lab-orders', target: LAB_URL, downstreamPrefix: '/lab-orders' },
+  { prefix: '/api/v1/lab-order-items', target: LAB_URL, downstreamPrefix: '/lab-order-items' },
+  { prefix: '/api/v1/specimens', target: LAB_URL, downstreamPrefix: '/specimens' },
+  { prefix: '/api/v1/results', target: LAB_URL, downstreamPrefix: '/results' },
+  { prefix: '/api/v1/prescriptions', target: PHARMACY_URL, downstreamPrefix: '/prescriptions' },
+  { prefix: '/api/v1/inventory-items', target: PHARMACY_URL, downstreamPrefix: '/inventory-items' },
+  { prefix: '/api/v1/prescription-items', target: PHARMACY_URL, downstreamPrefix: '/prescription-items' },
 
   // Swagger UIs for each backend service — on the free single-container
   // Render deploy these services have no public URL of their own, so this
@@ -53,6 +66,12 @@ const ROUTES: { prefix: string; target: string; downstreamPrefix: string }[] = [
   { prefix: '/docs/patient', target: PATIENT_URL, downstreamPrefix: '/patient' },
   { prefix: '/docs/scheduling-json', target: SCHEDULING_URL, downstreamPrefix: '/scheduling-json' },
   { prefix: '/docs/scheduling', target: SCHEDULING_URL, downstreamPrefix: '/scheduling' },
+  { prefix: '/docs/clinical-json', target: CLINICAL_URL, downstreamPrefix: '/clinical-json' },
+  { prefix: '/docs/clinical', target: CLINICAL_URL, downstreamPrefix: '/clinical' },
+  { prefix: '/docs/lab-json', target: LAB_URL, downstreamPrefix: '/lab-json' },
+  { prefix: '/docs/lab', target: LAB_URL, downstreamPrefix: '/lab' },
+  { prefix: '/docs/pharmacy-json', target: PHARMACY_URL, downstreamPrefix: '/pharmacy-json' },
+  { prefix: '/docs/pharmacy', target: PHARMACY_URL, downstreamPrefix: '/pharmacy' },
 ];
 
 export function registerProxyRoutes(app: Express) {
