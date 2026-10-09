@@ -10,8 +10,19 @@ import { registerProxyRoutes } from './proxy/proxy.setup';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // `CORS_ORIGINS` is an optional comma-separated allowlist. When unset,
+  // `origin: true` reflects whatever Origin header the request sent — unlike
+  // the literal string '*', this is compatible with `credentials: true`
+  // (the combination the `cors` middleware actually needs to see the header
+  // at all). Passing an array containing just '*' — the previous behavior —
+  // is not a wildcard to that middleware; it's an exact-match allowlist
+  // containing the literal 4-character origin "*", which real browser
+  // Origin headers never match, so no origin was ever actually allowed.
+  const corsOrigins = process.env.CORS_ORIGINS?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: (process.env.CORS_ORIGINS || '*').split(','),
+    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
     credentials: true,
   });
   // setGlobalPrefix + URI versioning together put every Nest-registered
