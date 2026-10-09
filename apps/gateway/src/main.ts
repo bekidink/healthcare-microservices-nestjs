@@ -10,17 +10,25 @@ import { registerProxyRoutes } from './proxy/proxy.setup';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // `CORS_ORIGINS` is an optional comma-separated allowlist. When unset,
-  // `origin: true` reflects whatever Origin header the request sent — unlike
-  // the literal string '*', this is compatible with `credentials: true`
-  // (the combination the `cors` middleware actually needs to see the header
-  // at all). Passing an array containing just '*' — the previous behavior —
-  // is not a wildcard to that middleware; it's an exact-match allowlist
-  // containing the literal 4-character origin "*", which real browser
-  // Origin headers never match, so no origin was ever actually allowed.
-  const corsOrigins = process.env.CORS_ORIGINS?.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  // `CORS_ORIGINS` is an optional comma-separated allowlist. Unset, or
+  // explicitly "*" (the literal value render.yaml sets today), both mean
+  // "allow any origin" — handled via `origin: true`, which reflects
+  // whatever Origin header the request sent. That's deliberate, not just
+  // the unset fallback: the `cors` middleware's own wildcard handling only
+  // triggers for the literal string `'*'` passed directly as `origin`, not
+  // for an array containing it — `"*".split(',')` produces `['*']`, an
+  // exact-match allowlist containing the 4-character origin "*", which no
+  // real browser Origin header ever equals. That mismatch is exactly why
+  // this previously allowed no origin at all, including with
+  // CORS_ORIGINS=* set verbatim on the deployed instance.
+  const corsOriginsEnv = process.env.CORS_ORIGINS?.trim();
+  const corsOrigins =
+    corsOriginsEnv && corsOriginsEnv !== '*'
+      ? corsOriginsEnv
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      : undefined;
   app.enableCors({
     origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
     credentials: true,
