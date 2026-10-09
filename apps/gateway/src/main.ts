@@ -41,10 +41,30 @@ async function bootstrap() {
     description: 'Routing, auth-context resolution, rate limiting, request IDs, versioning, CORS and error normalization in front of the platform services.',
   });
 
-  // Downstream services are proxied at the raw Express layer — the gateway
-  // deliberately doesn't re-declare every downstream route as a Nest
-  // controller, since that would duplicate each service's own route table
-  // and drift out of sync with it over time.
+  // KNOWN ISSUE (found and reproduced, not yet fixed — see conversation/PR
+  // notes): AuthContextMiddleware is registered via AppModule.configure()
+  // or `forRoutes('*')`, but these raw proxy routes are added directly to
+  // the underlying Express instance from here, after NestFactory.create().
+  // Empirically, requests matching a proxy route never reach
+  // AuthContextMiddleware at all — meaning x-auth-user-id/
+  // x-auth-organization-id/x-auth-permissions are never attached to any
+  // proxied (i.e. every downstream) request, so every
+  // PermissionGuard-protected route (organization.manage, user.manage,
+  // patient.merge, encounter.sign, invoice.void) rejects real, permitted
+  // callers as if they had no permissions at all. A fix attempted during
+  // this session (moving the proxy into AppModule's own middleware chain,
+  // as a function passed to `consumer.apply(...)`) hit a second, deeper
+  // issue: Nest's own global-prefix/versioning route resolution mutates
+  // `req.url` down to `/` by the time an unmatched request reaches
+  // `forRoutes('*')` middleware, and restoring it from `req.originalUrl`
+  // before invoking http-proxy-middleware caused requests to hang rather
+  // than complete. Reverted rather than ship a half-fixed, regression-prone
+  // change under time pressure. The more promising path, not yet attempted:
+  // construct the Express app directly (`express()`), mount
+  // RequestId/AuthContext/proxy middleware on it as plain Express (no Nest
+  // involvement, so no mangling), and pass that app into
+  // `NestFactory.create(AppModule, new ExpressAdapter(app))` so Nest only
+  // ever owns its own routes (currently just /api/health).
   registerProxyRoutes(app.getHttpAdapter().getInstance() as Express);
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
